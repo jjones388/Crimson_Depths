@@ -35,3 +35,8 @@ pip install pygame
 # Run the game
 cd Crimson_Depths
 python -m crimson_depths.main
+```
+
+## Screenshots
+![Crimson_Depths1](https://github.com/user-attachments/assets/b57cad06-5e4e-491a-a8c6-495e5e6c8d4c)
+
