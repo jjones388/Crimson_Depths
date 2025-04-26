@@ -1,13 +1,14 @@
 import random
-from ..map.map import Map
-from ..data.items import place_entities
-from ..config import MAP_WIDTH, MAP_HEIGHT, MAX_ENEMIES_PER_ROOM, MAX_ITEMS_PER_ROOM, TileType, EntityType
+from map.map import Map
+from config import MAP_WIDTH, MAP_HEIGHT, MAX_ENEMIES_PER_ROOM, MAX_ITEMS_PER_ROOM, TileType, EntityType
+from data.items import place_entities
+from map.town import generate_town_map
 
 class GameWorld:
     def __init__(self, max_levels=20):
         self.max_levels = max_levels
         self.levels = {}
-        self.current_level = 1
+        self.current_level = 0  # Start in town (level 0)
         # Set a single seed for the entire dungeon
         self.seed = random.randint(0, 1000000)
     
@@ -18,26 +19,44 @@ class GameWorld:
             level_seed = self.seed + level_number  # Unique seed for each level
             random.seed(level_seed)
             
-            # Create the new dungeon level
+            # Create the new level
             game_map = Map(MAP_WIDTH, MAP_HEIGHT, level_number)
-            game_map.generate()
             
-            # Create list for level entities (excluding player)
-            entities = []
-            
-            # Place entities in the map
-            for room in game_map.rooms[1:]:
-                place_entities(room, entities, MAX_ENEMIES_PER_ROOM, MAX_ITEMS_PER_ROOM, level_number)
+            if level_number == 0:
+                # Town level
+                game_map.generate = lambda: None  # Disable standard dungeon generation
+                entities = generate_town_map(game_map)  # Use the entities returned from town generation
+            else:
+                # Dungeon level
+                game_map.generate()
+                
+                # Create list for level entities (excluding player)
+                entities = []
+                
+                # Place entities in the map
+                for room in game_map.rooms[1:]:
+                    place_entities(room, entities, MAX_ENEMIES_PER_ROOM, MAX_ITEMS_PER_ROOM, level_number)
             
             # Set the stairs positions
-            # Down stairs in a random room (except first room where player spawns)
-            if level_number < self.max_levels:
+            if level_number == 0:
+                # Town already has down stairs to dungeon from the town generator
+                pass
+            elif level_number < self.max_levels:
+                # Down stairs in a random room (except first room where player spawns)
                 down_stairs_room = random.choice(game_map.rooms[1:])
                 game_map.tiles[down_stairs_room.center_y][down_stairs_room.center_x] = TileType.STAIRS_DOWN
                 game_map.down_stairs_position = (down_stairs_room.center_x, down_stairs_room.center_y)
             
             # Up stairs in another random room
-            if level_number > 1:
+            if level_number == 1:
+                # The first dungeon level has stairs up to the town
+                up_room_candidates = [room for room in game_map.rooms if 
+                                   (room.center_x, room.center_y) != getattr(game_map, 'down_stairs_position', None)]
+                up_stairs_room = random.choice(up_room_candidates)
+                game_map.tiles[up_stairs_room.center_y][up_stairs_room.center_x] = TileType.STAIRS_UP
+                game_map.up_stairs_position = (up_stairs_room.center_x, up_stairs_room.center_y)
+            elif level_number > 1:
+                # Other levels connect to the previous dungeon level
                 up_room_candidates = [room for room in game_map.rooms if 
                                    (room.center_x, room.center_y) != getattr(game_map, 'down_stairs_position', None)]
                 up_stairs_room = random.choice(up_room_candidates)
@@ -58,12 +77,17 @@ class GameWorld:
     
     def go_up_stairs(self, player):
         """Move player up one level if possible"""
-        if self.current_level > 1:
+        if self.current_level > 0:
             # Get current game map
             current_map = self.levels[self.current_level][0]
             
             # Check if player is on up stairs
             if (current_map.tiles[player.y][player.x] == TileType.STAIRS_UP):
+                # Save player's current state (like silver, inventory, etc)
+                player_state = {
+                    'silver_pieces': player.silver_pieces
+                }
+                
                 self.current_level -= 1
                 
                 # Get the new level
@@ -71,6 +95,10 @@ class GameWorld:
                 
                 # Position player at the down stairs on the upper level
                 player.x, player.y = new_map.down_stairs_position
+                
+                # Restore player state
+                player.silver_pieces = player_state['silver_pieces']
+                
                 return True
         
         return False
@@ -83,6 +111,11 @@ class GameWorld:
             
             # Check if player is on down stairs
             if (current_map.tiles[player.y][player.x] == TileType.STAIRS_DOWN):
+                # Save player's current state (like silver, inventory, etc)
+                player_state = {
+                    'silver_pieces': player.silver_pieces
+                }
+                
                 self.current_level += 1
                 
                 # Get the new level (initialize if needed)
@@ -94,6 +127,9 @@ class GameWorld:
                 else:
                     # Fallback to first room center if something went wrong
                     player.x, player.y = new_map.rooms[0].center_x, new_map.rooms[0].center_y
+                
+                # Restore player state
+                player.silver_pieces = player_state['silver_pieces']
                 
                 return True
         

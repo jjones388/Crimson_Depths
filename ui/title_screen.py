@@ -1,8 +1,8 @@
 import pygame
 import sys
-from ..config import screen, BLACK, WHITE, RED, YELLOW
+from config import SCREEN_WIDTH, SCREEN_HEIGHT, BLACK, WHITE, YELLOW, LIGHT_BLUE, RED, screen, get_tile_from_tileset
 
-def draw_title_screen(selected_index):
+def draw_title_screen(selected_index, show_resume=False):
     """Draw the title screen with the given button selected"""
     # Fill screen with black
     screen.fill(BLACK)
@@ -20,7 +20,11 @@ def draw_title_screen(selected_index):
     screen.blit(subtitle_text, (subtitle_x, 180))
     
     # Menu buttons
-    buttons = ["New Game", "Load Game", "Options", "Exit Game"]
+    buttons = ["New Game"]
+    if show_resume:
+        buttons.append("Resume Game")
+    buttons.extend(["Load Game", "Options", "Exit Game"])
+    
     font_button = pygame.font.SysFont('Arial', 36)
     
     button_width = 300
@@ -61,7 +65,7 @@ def draw_title_screen(selected_index):
     # Update the display
     pygame.display.flip()
 
-def title_screen():
+def title_screen(show_resume=False):
     """Show the title screen and handle input until user makes a selection"""
     # Initialize pygame if not already done
     if not pygame.get_init():
@@ -73,8 +77,11 @@ def title_screen():
     # Current selected button
     selected_index = 0
     
+    # Get the button count
+    button_count = 4 if not show_resume else 5
+    
     # Draw initial screen
-    draw_title_screen(selected_index)
+    draw_title_screen(selected_index, show_resume)
     
     # Main title screen loop
     running = True
@@ -91,29 +98,49 @@ def title_screen():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     # Move selection up
-                    selected_index = (selected_index - 1) % 4
-                    draw_title_screen(selected_index)
+                    selected_index = (selected_index - 1) % button_count
+                    draw_title_screen(selected_index, show_resume)
                 
                 elif event.key == pygame.K_DOWN:
                     # Move selection down
-                    selected_index = (selected_index + 1) % 4
-                    draw_title_screen(selected_index)
+                    selected_index = (selected_index + 1) % button_count
+                    draw_title_screen(selected_index, show_resume)
                 
                 elif event.key == pygame.K_RETURN:
                     # Process selection
-                    if selected_index == 0:
-                        # New Game selected
-                        return "new_game"
-                    elif selected_index == 1:
-                        # Load Game selected - not implemented yet
-                        pass
-                    elif selected_index == 2:
-                        # Options selected - not implemented yet
-                        pass
-                    elif selected_index == 3:
-                        # Exit Game selected
-                        pygame.quit()
-                        sys.exit()
+                    if not show_resume:
+                        # Regular menu (no resume option)
+                        if selected_index == 0:
+                            # New Game selected
+                            return "new_game"
+                        elif selected_index == 1:
+                            # Load Game selected - not implemented yet
+                            pass
+                        elif selected_index == 2:
+                            # Options selected - not implemented yet
+                            pass
+                        elif selected_index == 3:
+                            # Exit Game selected
+                            pygame.quit()
+                            sys.exit()
+                    else:
+                        # Menu with resume option
+                        if selected_index == 0:
+                            # New Game selected
+                            return "new_game"
+                        elif selected_index == 1:
+                            # Resume Game selected
+                            return "resume_game"
+                        elif selected_index == 2:
+                            # Load Game selected - not implemented yet
+                            pass
+                        elif selected_index == 3:
+                            # Options selected - not implemented yet
+                            pass
+                        elif selected_index == 4:
+                            # Exit Game selected
+                            pygame.quit()
+                            sys.exit()
                 
                 elif event.key == pygame.K_ESCAPE:
                     # Exit on escape

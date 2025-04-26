@@ -1,11 +1,12 @@
 import random
 
 class MonsterData:
-    def __init__(self, char, name, hit_dice, ac, damage_dice, xp, min_level, max_level):
+    def __init__(self, char, name, hit_dice, armor, damage_dice, xp, min_level, max_level, dodge=10):
         self.char = char                # Character representation
         self.name = name                # Monster name
         self.hit_dice = hit_dice        # Tuple of (count, dice_sides) or a fraction
-        self.ac = ac                    # Armor Class
+        self.armor = armor              # Damage reduction (formerly AC)
+        self.dodge = dodge              # Dodge chance
         self.damage_dice = damage_dice  # Tuple of (count, dice_sides)
         self.xp = xp                    # XP awarded
         self.min_level = min_level      # Minimum dungeon level

@@ -43,5 +43,5 @@ def calculate_fov(game_map, x, y, radius):
                     break
                 game_map.visible[py][px] = True
                 game_map.explored[py][px] = True
-                if game_map.tiles[py][px] == game_map.tiles[py][px].__class__.WALL:
-                    break  # Stop the ray at walls
+                if game_map.tiles[py][px] in [game_map.tiles[py][px].__class__.WALL, game_map.tiles[py][px].__class__.TOWN_WALL]:
+                    break  # Stop the ray at walls and town walls

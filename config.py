@@ -75,6 +75,8 @@ class TileType(Enum):
     CORRIDOR = 2
     STAIRS_DOWN = 3
     STAIRS_UP = 4
+    GRASS = 5
+    TOWN_WALL = 6
 
 # Entity types
 class EntityType(Enum):
@@ -102,6 +104,8 @@ class ItemType(Enum):
     CONSUMABLE = 7
     KEY = 8
     MISC = 9
+    RANGED_WEAPON = 10
+    AMMO = 11
 
 def get_tile_from_tileset(index):
     # Calculate position in the tileset

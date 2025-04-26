@@ -1,7 +1,8 @@
 import numpy as np
 import random
-from ..config import TileType, MAP_WIDTH, MAP_HEIGHT, MAX_ROOMS, MIN_ROOM_SIZE, MAX_ROOM_SIZE
+from config import TileType, MAP_WIDTH, MAP_HEIGHT, MAX_ROOMS, MIN_ROOM_SIZE, MAX_ROOM_SIZE
 from .room import Room
+import heapq
 
 class Map:
     def __init__(self, width, height, level=1):
@@ -36,7 +37,7 @@ class Map:
     
     def is_blocked(self, x, y):
         # First test the map tile
-        if self.tiles[y][x] == TileType.WALL:
+        if self.tiles[y][x] in [TileType.WALL, TileType.TOWN_WALL]:
             return True
         
         # Now check for any blocking entities
@@ -45,6 +46,94 @@ class Map:
                 return True
         
         return False
+    
+    def get_unexplored_tiles(self, explored_only=False):
+        """Returns a list of unexplored tiles that are adjacent to explored tiles"""
+        frontier_tiles = []
+        for y in range(self.height):
+            for x in range(self.width):
+                # Only consider floor and corridor tiles 
+                if self.tiles[y][x] in [TileType.FLOOR, TileType.CORRIDOR, TileType.STAIRS_DOWN, TileType.STAIRS_UP]:
+                    # If we only want unexplored tiles adjacent to explored tiles
+                    if explored_only:
+                        if not self.explored[y][x]:
+                            # Check if adjacent to any explored tiles
+                            is_adjacent_to_explored = False
+                            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]:
+                                nx, ny = x + dx, y + dy
+                                if (0 <= nx < self.width and 0 <= ny < self.height and 
+                                    self.explored[ny][nx] and not self.is_blocked(nx, ny)):
+                                    is_adjacent_to_explored = True
+                                    break
+                            if is_adjacent_to_explored:
+                                frontier_tiles.append((x, y))
+                    # If we want all unexplored tiles
+                    elif not self.explored[y][x]:
+                        frontier_tiles.append((x, y))
+        return frontier_tiles
+    
+    def get_path(self, start_x, start_y, target_x, target_y):
+        """A* pathfinding algorithm to find a path from start to target"""
+        # Define the heuristic (Manhattan distance)
+        def heuristic(x, y):
+            return abs(x - target_x) + abs(y - target_y)
+        
+        # Define possible movements (including diagonals)
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
+        
+        # Priority queue for A*
+        frontier = []
+        heapq.heappush(frontier, (0, (start_x, start_y)))
+        
+        # Dict to track where we came from
+        came_from = {(start_x, start_y): None}
+        
+        # Dict to track the cost to reach each position
+        cost_so_far = {(start_x, start_y): 0}
+        
+        while frontier:
+            _, current = heapq.heappop(frontier)
+            current_x, current_y = current
+            
+            # If we reached the goal
+            if current_x == target_x and current_y == target_y:
+                break
+            
+            for dx, dy in directions:
+                next_x, next_y = current_x + dx, current_y + dy
+                
+                # Check if the next position is valid
+                if not (0 <= next_x < self.width and 0 <= next_y < self.height):
+                    continue
+                    
+                # Check if the next position is blocked
+                if self.is_blocked(next_x, next_y):
+                    continue
+                
+                # Calculate the cost to move to the next position (diagonal moves cost more)
+                movement_cost = 1.0 if dx == 0 or dy == 0 else 1.4
+                new_cost = cost_so_far[current] + movement_cost
+                
+                # If we haven't been here before or found a better path
+                if (next_x, next_y) not in cost_so_far or new_cost < cost_so_far[(next_x, next_y)]:
+                    cost_so_far[(next_x, next_y)] = new_cost
+                    priority = new_cost + heuristic(next_x, next_y)
+                    heapq.heappush(frontier, (priority, (next_x, next_y)))
+                    came_from[(next_x, next_y)] = current
+        
+        # Reconstruct the path
+        if (target_x, target_y) not in came_from:
+            return []  # No path found
+            
+        path = []
+        current = (target_x, target_y)
+        while current != (start_x, start_y):
+            path.append(current)
+            current = came_from[current]
+        
+        # Reverse the path to get from start to end
+        path.reverse()
+        return path
     
     def generate(self):
         # Generate a dungeon map
