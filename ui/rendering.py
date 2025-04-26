@@ -1,6 +1,9 @@
 import pygame
+import math
 from config import (
     BLACK, WHITE, GRAY, DARK_GRAY, RED, GREEN, YELLOW, LIGHT_BLUE,
+    DEEP_CRIMSON, DARK_PURPLE, OBSIDIAN_BLACK, BURNISHED_GOLD, BLOOD_RED,
+    UI_BACKGROUND, UI_BORDER, UI_TEXT_PRIMARY, UI_TEXT_SECONDARY, UI_HIGHLIGHT, UI_PANEL_BACKGROUND,
     TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, LEFT_PANEL_WIDTH, MESSAGE_LOG_HEIGHT,
     INFO_PANEL_WIDTH, INFO_PANEL_X, MESSAGE_LOG_Y, MAP_HEIGHT, MAP_WIDTH,
     BORDER_HORIZONTAL, BORDER_VERTICAL, BORDER_TOP_LEFT, BORDER_TOP_RIGHT,
@@ -8,6 +11,472 @@ from config import (
     BORDER_T_UP, BORDER_T_DOWN, BORDER_CROSS, TileType, EntityType, EquipmentSlot,
     get_tile_from_tileset, screen
 )
+from ui.theme import ThemeManager
+from ui.panel import PanelManager
+
+# Create the panel manager
+panel_manager = PanelManager()
+
+def draw_game_ui(player, game_world, game_map, message_log, offset_x, offset_y, 
+                   game_state=None, 
+                   # Add inventory-related arguments
+                   inventory_index=None, inventory_mode=None, selected_equipment_slot=None):
+    """Draw the entire game UI using the panel system"""
+    # Fill background
+    screen.fill(UI_BACKGROUND)
+    
+    # Update panels early to get correct dimensions
+    panel_manager.update(player, game_world, message_log)
+    
+    # Get map dimensions
+    map_area = panel_manager.get_map_dimensions()
+    
+    # Set clipping for map area
+    clip_rect = pygame.Rect(map_area["x"], map_area["y"], map_area["width"], map_area["height"])
+    screen.set_clip(clip_rect)
+    
+    # Draw the map and entities in the map area
+    draw_map(game_map, offset_x, offset_y, map_area)
+    draw_entities(game_map.entities, game_map, offset_x, offset_y, map_area)
+
+    # Draw any additional UI elements based on game state that should be within the map clip
+    if game_state == 'targeting':
+        draw_targeting_overlay(player, game_map, offset_x, offset_y, map_area)
+    
+    # Reset clipping before drawing panels
+    screen.set_clip(None)
+    
+    # Render panels on top
+    panel_manager.render(screen)
+    
+    # Draw overlays that should appear over everything (like inventory)
+    if game_state == 'inventory':
+        # Call the actual draw_inventory function with necessary arguments
+        draw_inventory(player, inventory_index, inventory_mode, selected_equipment_slot)
+    elif game_state == 'character_sheet':
+        # This will be implemented later
+        pass # Replace with character sheet drawing function when ready
+
+def draw_map(game_map, offset_x, offset_y, map_area):
+    """Draw the map tiles within the given map area"""
+    # No longer need map_area checks here, as clipping handles it
+    map_x = map_area["x"]
+    map_y = map_area["y"]
+    map_width = map_area["width"]
+    map_height = map_area["height"]
+    
+    # Calculate tile size based on map dimensions
+    view_width_tiles = map_width // TILE_SIZE
+    view_height_tiles = map_height // TILE_SIZE
+    
+    # Draw map background
+    pygame.draw.rect(screen, UI_BACKGROUND, (map_x, map_y, map_width, map_height))
+    
+    # Add subtle grid pattern to background
+    for x in range(0, map_width, TILE_SIZE):
+        for y in range(0, map_height, TILE_SIZE):
+            if (x // TILE_SIZE + y // TILE_SIZE) % 2 == 0:
+                pygame.draw.rect(screen, (20, 20, 25), 
+                               (map_x + x, map_y + y, TILE_SIZE, TILE_SIZE))
+    
+    # Calculate what tiles are visible in the viewport
+    start_x = max(0, offset_x)
+    end_x = min(MAP_WIDTH, offset_x + view_width_tiles)
+    start_y = max(0, offset_y)
+    end_y = min(MAP_HEIGHT, offset_y + view_height_tiles)
+    
+    # Draw the map tiles
+    for y in range(start_y, end_y):
+        for x in range(start_x, end_x):
+            screen_x = map_x + (x - offset_x) * TILE_SIZE
+            screen_y = map_y + (y - offset_y) * TILE_SIZE
+            
+            visible = game_map.visible[y][x]
+            explored = game_map.explored[y][x]
+            
+            if not explored:
+                # Unexplored areas are completely black
+                continue
+            
+            tile_index = 0
+            tile_color = WHITE
+            
+            if game_map.tiles[y][x] == TileType.WALL:
+                tile_index = 219  # Block character (█)
+                tile_color = GRAY
+            elif game_map.tiles[y][x] == TileType.TOWN_WALL:
+                tile_index = 219  # Block character (█)
+                tile_color = LIGHT_BLUE
+            elif game_map.tiles[y][x] == TileType.FLOOR or game_map.tiles[y][x] == TileType.CORRIDOR:
+                tile_index = 250  # Dot character (·)
+                tile_color = WHITE
+            elif game_map.tiles[y][x] == TileType.GRASS:
+                tile_index = 44  # Comma character (,)
+                tile_color = GREEN
+            elif game_map.tiles[y][x] == TileType.STAIRS_DOWN:
+                tile_index = 62  # > character
+                tile_color = WHITE
+            elif game_map.tiles[y][x] == TileType.STAIRS_UP:
+                tile_index = 60  # < character
+                tile_color = WHITE
+            
+            # If it's not visible but explored, darken the color
+            if not visible:
+                # Darken the color by multiplying by 0.5
+                tile_color = tuple(c // 2 for c in tile_color)
+            
+            tile = get_tile_from_tileset(tile_index)
+            colored_tile = tile.copy()
+            colored_tile.fill(tile_color, special_flags=pygame.BLEND_RGBA_MULT)
+            
+            # Add a subtle glow effect to visible tiles
+            if visible:
+                glow_surface = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                glow_radius = TILE_SIZE // 2
+                glow_color = (255, 255, 200, 30)  # Subtle yellow glow
+                pygame.draw.circle(glow_surface, glow_color, 
+                                 (glow_radius, glow_radius), glow_radius)
+                screen.blit(glow_surface, (screen_x, screen_y))
+            
+            screen.blit(colored_tile, (screen_x, screen_y))
+    
+    # Draw building labels
+    if hasattr(game_map, 'buildings'):
+        for building in game_map.buildings:
+            # Default label position to top wall
+            label_x = building.x1 + (building.x2 - building.x1) // 2
+            label_y = building.y1
+            
+            # Adjust the label position based on where the door is
+            if building.door_y == building.y1:  # Door is on the top wall
+                label_y = building.y2  # Place label on bottom wall
+            elif building.door_y == building.y2:  # Door is on the bottom wall
+                label_y = building.y1  # Place label on top wall
+            
+            # Check if the position is within the viewable area
+            screen_x = map_x + (label_x - offset_x) * TILE_SIZE
+            screen_y = map_y + (label_y - offset_y) * TILE_SIZE
+            
+            if (screen_x < map_x or screen_x >= map_x + map_width or 
+                screen_y < map_y or screen_y >= map_y + map_height):
+                continue
+            
+            # Draw the label with improved styling
+            font = ThemeManager.FONT_SMALL
+            text_surface = font.render(building.name, True, BURNISHED_GOLD)
+            
+            # Add a dark background for better readability
+            bg_rect = text_surface.get_rect(center=(screen_x, screen_y))
+            bg_rect.inflate_ip(10, 6)  # Make background slightly larger
+            bg_surface = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+            bg_surface.fill((0, 0, 0, 180))  # Semi-transparent black
+            screen.blit(bg_surface, bg_rect)
+            
+            # Center the text on the wall
+            centered_x = screen_x - text_surface.get_width() // 2
+            screen.blit(text_surface, (centered_x, screen_y - text_surface.get_height() // 2))
+
+def draw_entities(entities, game_map, offset_x, offset_y, map_area):
+    """Draw entities within the given map area"""
+    # No longer need map_area checks here, as clipping handles it
+    map_x = map_area["x"]
+    map_y = map_area["y"]
+    map_width = map_area["width"]
+    map_height = map_area["height"]
+    
+    # Custom sort key function: Draw items first, then corpses, then living monsters, then player
+    def entity_sort_key(e):
+        if e.entity_type == EntityType.ITEM:
+            return 0  # Items drawn first
+        elif e.entity_type == EntityType.ENEMY and e.char == '%':
+            return 1  # Corpses drawn second
+        elif e.entity_type == EntityType.ENEMY:
+            return 2  # Living monsters drawn third
+        else:
+            return 3  # Player drawn last
+    
+    sorted_entities = sorted(entities, key=entity_sort_key)
+    
+    for entity in sorted_entities:
+        screen_x = map_x + (entity.x - offset_x) * TILE_SIZE
+        screen_y = map_y + (entity.y - offset_y) * TILE_SIZE
+        
+        # Check if the entity is within the visible Map View area
+        if (screen_x < map_x or screen_x >= map_x + map_width or 
+            screen_y < map_y or screen_y >= map_y + map_height):
+            continue
+            
+        # Only draw entities that are in the field of vision
+        if entity.entity_type == EntityType.PLAYER or game_map.visible[entity.y][entity.x]:
+            if entity.entity_type == EntityType.PLAYER:
+                tile_index = 64  # @ character
+                
+                # Add highlight effect for player
+                glow_surface = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 500)
+                glow_size = int(5 + 5 * pulse)
+                
+                for i in range(glow_size, 0, -2):
+                    alpha = 10 + int(20 * (i / glow_size))
+                    pygame.draw.circle(glow_surface, (*UI_HIGHLIGHT[:3], alpha), 
+                                    (TILE_SIZE // 2, TILE_SIZE // 2), i)
+                screen.blit(glow_surface, (screen_x, screen_y))
+            else:
+                tile_index = ord(entity.char)
+            
+            # Get and color the entity tile
+            tile = get_tile_from_tileset(tile_index)
+            colored_tile = tile.copy()
+            colored_tile.fill(entity.color, special_flags=pygame.BLEND_RGBA_MULT)
+            
+            # Add health indicator for enemies if they're damaged
+            if (entity.entity_type == EntityType.ENEMY and entity.fighter and 
+                entity.fighter.hp < entity.fighter.max_hp):
+                # Draw health bar above entity
+                hp_ratio = entity.fighter.hp / entity.fighter.max_hp
+                bar_width = TILE_SIZE
+                hp_width = max(1, int(bar_width * hp_ratio))
+                
+                # Health bar background
+                pygame.draw.rect(screen, (80, 0, 0), 
+                               (screen_x, screen_y - 5, bar_width, 3))
+                # Health bar fill
+                pygame.draw.rect(screen, (200, 30, 30), 
+                               (screen_x, screen_y - 5, hp_width, 3))
+            
+            screen.blit(colored_tile, (screen_x, screen_y))
+
+def draw_targeting_overlay(player, game_map, offset_x, offset_y, map_area):
+    """Draw targeting overlay on the map"""
+    # No longer need map_area checks here, as clipping handles it
+    map_x = map_area["x"]
+    map_y = map_area["y"]
+    map_width = map_area["width"]
+    map_height = map_area["height"]
+
+    target_x, target_y = player.target_coords
+    # Check if target coordinates are valid
+    if not hasattr(player, 'targeting_x') or not hasattr(player, 'targeting_y'):
+        return
+        
+    targeting_x = player.targeting_x
+    targeting_y = player.targeting_y
+    
+    # Calculate screen position
+    screen_x = map_x + (targeting_x - offset_x) * TILE_SIZE
+    screen_y = map_y + (targeting_y - offset_y) * TILE_SIZE
+    
+    # Create targeting cursor animation
+    current_time = pygame.time.get_ticks()
+    pulse = 0.5 + 0.5 * math.sin(current_time / 150)
+    cursor_size = int(TILE_SIZE * (0.8 + 0.2 * pulse))
+    cursor_offset = (TILE_SIZE - cursor_size) // 2
+    
+    # Draw targeting cursor
+    pygame.draw.rect(screen, UI_HIGHLIGHT, 
+                   (screen_x + cursor_offset, screen_y + cursor_offset, 
+                    cursor_size, cursor_size), 2)
+    
+    # Draw line of sight from player to target
+    player_screen_x = map_x + (player.x - offset_x) * TILE_SIZE + TILE_SIZE // 2
+    player_screen_y = map_y + (player.y - offset_y) * TILE_SIZE + TILE_SIZE // 2
+    target_screen_x = screen_x + TILE_SIZE // 2
+    target_screen_y = screen_y + TILE_SIZE // 2
+    
+    # Draw dashed line
+    dash_length = 5
+    gap_length = 3
+    dash_pattern = dash_length + gap_length
+    
+    distance = math.sqrt((target_screen_x - player_screen_x) ** 2 + 
+                         (target_screen_y - player_screen_y) ** 2)
+    angle = math.atan2(target_screen_y - player_screen_y, 
+                       target_screen_x - player_screen_x)
+    
+    # Calculate number of segments
+    segments = int(distance / dash_pattern)
+    
+    for i in range(segments):
+        start_dist = i * dash_pattern
+        end_dist = start_dist + dash_length
+        
+        if end_dist > distance:
+            end_dist = distance
+            
+        start_x = player_screen_x + math.cos(angle) * start_dist
+        start_y = player_screen_y + math.sin(angle) * start_dist
+        end_x = player_screen_x + math.cos(angle) * end_dist
+        end_y = player_screen_y + math.sin(angle) * end_dist
+        
+        pygame.draw.line(screen, UI_HIGHLIGHT, (start_x, start_y), (end_x, end_y), 1)
+
+def draw_inventory(player, selected_index, inventory_mode, selected_equipment_slot):
+    """Draw the inventory screen"""
+    # Create a semi-transparent overlay
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+    overlay.set_alpha(200)
+    overlay.fill(BLACK)
+    screen.blit(overlay, (0, 0))
+    
+    # Draw inventory title
+    font_title = pygame.font.SysFont('Arial', 24)
+    title_text = font_title.render("INVENTORY", True, YELLOW)
+    title_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 - title_text.get_width() // 2
+    screen.blit(title_text, (title_x, TILE_SIZE * 2))
+    
+    # Draw equipment section title
+    equip_title = font_title.render("EQUIPMENT", True, LIGHT_BLUE if inventory_mode == 'equipment' else GRAY)
+    equip_x = TILE_SIZE * 4
+    screen.blit(equip_title, (equip_x, TILE_SIZE * 4))
+    
+    # Draw inventory section title
+    inv_title = font_title.render("ITEMS", True, LIGHT_BLUE if inventory_mode == 'items' else GRAY)
+    inv_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 + TILE_SIZE * 4
+    screen.blit(inv_title, (inv_x, TILE_SIZE * 4))
+    
+    # Draw dividing line
+    mid_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2
+    pygame.draw.line(screen, WHITE, (mid_x, TILE_SIZE * 6), 
+                    (mid_x, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2), 2)
+    
+    # Font for items
+    font = pygame.font.SysFont('Arial', 16)
+    small_font = pygame.font.SysFont('Arial', 12)
+    
+    # Draw equipment slots
+    equipment_slots = [
+        (EquipmentSlot.RIGHT_HAND, "Right Hand"),
+        (EquipmentSlot.LEFT_HAND, "Left Hand"),
+        (EquipmentSlot.HEAD, "Head"),
+        (EquipmentSlot.TORSO, "Torso"),
+        (EquipmentSlot.LEGS, "Legs"),
+        (EquipmentSlot.HANDS, "Hands"),
+        (EquipmentSlot.FEET, "Feet")
+    ]
+    
+    # Track if we're showing a two-handed weapon
+    two_handed_weapon = None
+    
+    for i, (slot, name) in enumerate(equipment_slots):
+        # Draw slot name
+        y_pos = TILE_SIZE * 6 + i * TILE_SIZE * 2
+        slot_text = font.render(name + ":", True, WHITE)
+        screen.blit(slot_text, (TILE_SIZE * 2, y_pos))
+        
+        # Get equipped item for this slot
+        equipped_item = player.inventory.get_equipped_item(slot)
+        
+        # Draw highlight for selected equipment slot
+        if inventory_mode == 'equipment' and slot == selected_equipment_slot:
+            pygame.draw.rect(screen, (50, 50, 150), 
+                          (TILE_SIZE, y_pos - 5, 
+                           mid_x - TILE_SIZE * 2, 
+                           TILE_SIZE * 1.5))
+        
+        # Draw equipped item or "Empty"
+        if equipped_item:
+            # Check if it's a two-handed weapon
+            is_two_handed = (equipped_item.item.weapon_data and equipped_item.item.weapon_data.is_two_handed)
+            
+            # If this is the left hand slot and we already displayed a two-handed weapon in the right hand
+            if slot == EquipmentSlot.LEFT_HAND and two_handed_weapon:
+                info_text = font.render(f"(Same as right hand - {two_handed_weapon.name})", True, GRAY)
+                screen.blit(info_text, (TILE_SIZE * 14, y_pos))
+                continue
+                
+            # Draw item character
+            item_char = get_tile_from_tileset(ord(equipped_item.char))
+            colored_char = item_char.copy()
+            colored_char.fill(equipped_item.color, special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(colored_char, (TILE_SIZE * 12, y_pos))
+            
+            # Add (2H) suffix for two-handed weapons
+            name_text = f"{equipped_item.name}"
+            if is_two_handed:
+                name_text += " (2H)"
+            
+            # Add [unpaid] for unpaid shop items
+            if equipped_item.item and equipped_item.item.unpaid:
+                name_text += " [unpaid]"
+                item_text = font.render(name_text, True, RED)
+            else:
+                item_text = font.render(name_text, True, YELLOW)
+            
+            if is_two_handed:
+                # Remember we displayed a two-handed weapon
+                two_handed_weapon = equipped_item
+            
+            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
+            
+            # Show price for unpaid items
+            if equipped_item.item and equipped_item.item.unpaid:
+                price_text = small_font.render(f"Price: {equipped_item.item.price} silver", True, YELLOW)
+                screen.blit(price_text, (TILE_SIZE * 14, y_pos + TILE_SIZE))
+        else:
+            item_text = font.render("Empty", True, GRAY)
+            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
+    
+    # Draw carried items (right column)
+    items_start_y = TILE_SIZE * 6
+    items_per_page = 10
+    
+    # Draw slot count at bottom right
+    slot_text = font.render(f"Slots: {len(player.inventory.items)}/{player.inventory.capacity}", True, WHITE)
+    slot_x = LEFT_PANEL_WIDTH * TILE_SIZE - slot_text.get_width() - TILE_SIZE
+    slot_y = SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2
+    screen.blit(slot_text, (slot_x, slot_y))
+    
+    for i, item in enumerate(player.inventory.items[:items_per_page]):
+        y_pos = items_start_y + i * TILE_SIZE * 2
+        
+        # Highlight selected item
+        if inventory_mode == 'items' and i == selected_index:
+            pygame.draw.rect(screen, (50, 50, 150), 
+                           (mid_x + TILE_SIZE, y_pos - 5, 
+                            LEFT_PANEL_WIDTH * TILE_SIZE // 2 - TILE_SIZE * 2, 
+                            TILE_SIZE * 1.5))
+        
+        # Draw item character and name
+        item_char = get_tile_from_tileset(ord(item.char))
+        colored_char = item_char.copy()
+        colored_char.fill(item.color, special_flags=pygame.BLEND_RGBA_MULT)
+        screen.blit(colored_char, (mid_x + TILE_SIZE * 2, y_pos))
+        
+        # Build the item name with any needed suffixes
+        name_text = f"{item.name}"
+        
+        # Add (2H) suffix for two-handed weapons
+        if item.item and item.item.weapon_data and item.item.weapon_data.is_two_handed:
+            name_text += " (2H)"
+        
+        # Add [unpaid] for unpaid shop items
+        if item.item and item.item.unpaid:
+            name_text += " [unpaid]"
+            item_text = font.render(name_text, True, RED)
+        else:
+            item_text = font.render(name_text, True, WHITE)
+        
+        screen.blit(item_text, (mid_x + TILE_SIZE * 4, y_pos))
+        
+        # Show price for unpaid items
+        if item.item and item.item.unpaid:
+            price_text = small_font.render(f"Price: {item.item.price} silver", True, YELLOW)
+            screen.blit(price_text, (mid_x + TILE_SIZE * 4, y_pos + TILE_SIZE))
+    
+    # Draw instructions
+    instructions = [
+        "←/→: Switch sides",
+        "↑/↓: Navigate",
+        "Enter: Use/Equip/Unequip",
+        "D: Drop item",
+        "B: Buy unpaid items",
+        "I: Close inventory"
+    ]
+    
+    for i, instruction in enumerate(instructions):
+        instr_text = font.render(instruction, True, LIGHT_BLUE)
+        screen.blit(instr_text, (LEFT_PANEL_WIDTH * TILE_SIZE // 4, 
+                               SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * (6-i)))
 
 def draw_borders():
     """Draw borders around the three UI areas using double-line characters"""
@@ -74,120 +543,6 @@ def draw_borders():
     
     # T-junction for right of horizontal divider
     screen.blit(t_left, (left_panel_width - TILE_SIZE, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE))
-
-def draw_map(game_map, offset_x, offset_y):
-    for y in range(MAP_HEIGHT):
-        for x in range(MAP_WIDTH):
-            screen_x = (x - offset_x) * TILE_SIZE + TILE_SIZE
-            screen_y = (y - offset_y) * TILE_SIZE + TILE_SIZE
-            
-            # Check if the tile is within the visible Map View area
-            if (screen_x < TILE_SIZE or screen_x >= LEFT_PANEL_WIDTH * TILE_SIZE - TILE_SIZE or 
-                screen_y < TILE_SIZE or screen_y >= SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE):
-                continue
-            
-            visible = game_map.visible[y][x]
-            explored = game_map.explored[y][x]
-            
-            if not explored:
-                # Unexplored areas are completely black
-                continue
-            
-            tile_index = 0
-            tile_color = WHITE
-            
-            if game_map.tiles[y][x] == TileType.WALL:
-                tile_index = 219  # Block character (█)
-                tile_color = GRAY
-            elif game_map.tiles[y][x] == TileType.TOWN_WALL:
-                tile_index = 219  # Block character (█)
-                tile_color = LIGHT_BLUE
-            elif game_map.tiles[y][x] == TileType.FLOOR or game_map.tiles[y][x] == TileType.CORRIDOR:
-                tile_index = 250  # Dot character (·)
-                tile_color = WHITE
-            elif game_map.tiles[y][x] == TileType.GRASS:
-                tile_index = 44  # Comma character (,)
-                tile_color = GREEN
-            elif game_map.tiles[y][x] == TileType.STAIRS_DOWN:
-                tile_index = 62  # > character
-                tile_color = WHITE
-            elif game_map.tiles[y][x] == TileType.STAIRS_UP:
-                tile_index = 60  # < character
-                tile_color = WHITE
-            
-            # If it's not visible but explored, darken the color
-            if not visible:
-                # Darken the color by multiplying by 0.5
-                tile_color = tuple(c // 2 for c in tile_color)
-            
-            tile = get_tile_from_tileset(tile_index)
-            colored_tile = tile.copy()
-            colored_tile.fill(tile_color, special_flags=pygame.BLEND_RGBA_MULT)
-            screen.blit(colored_tile, (screen_x, screen_y))
-    
-    # Draw building labels
-    if hasattr(game_map, 'buildings'):
-        for building in game_map.buildings:
-            # Default label position to top wall
-            label_x = building.x1 + (building.x2 - building.x1) // 2
-            label_y = building.y1
-            
-            # Adjust the label position based on where the door is
-            if building.door_y == building.y1:  # Door is on the top wall
-                label_y = building.y2  # Place label on bottom wall
-            elif building.door_y == building.y2:  # Door is on the bottom wall
-                label_y = building.y1  # Place label on top wall
-            # Otherwise, keep the label on the top wall (default)
-            
-            # Check if the position is within the viewable area
-            screen_x = (label_x - offset_x) * TILE_SIZE + TILE_SIZE
-            screen_y = (label_y - offset_y) * TILE_SIZE + TILE_SIZE
-            
-            if (screen_x < TILE_SIZE or screen_x >= LEFT_PANEL_WIDTH * TILE_SIZE - TILE_SIZE or 
-                screen_y < TILE_SIZE or screen_y >= SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE):
-                continue
-            
-            # Draw the label
-            font = pygame.font.SysFont('Arial', 12)
-            text_surface = font.render(building.name, True, BLACK)  # Changed to black color
-            # Center the text on the wall
-            centered_x = screen_x - text_surface.get_width() // 2
-            screen.blit(text_surface, (centered_x, screen_y))
-
-def draw_entities(entities, game_map, offset_x, offset_y):
-    # Custom sort key function: Draw items first, then corpses, then living monsters, then player
-    def entity_sort_key(e):
-        if e.entity_type == EntityType.ITEM:
-            return 0  # Items drawn first
-        elif e.entity_type == EntityType.ENEMY and e.char == '%':
-            return 1  # Corpses drawn second
-        elif e.entity_type == EntityType.ENEMY:
-            return 2  # Living monsters drawn third
-        else:
-            return 3  # Player drawn last
-    
-    sorted_entities = sorted(entities, key=entity_sort_key)
-    
-    for entity in sorted_entities:
-        screen_x = (entity.x - offset_x) * TILE_SIZE + TILE_SIZE
-        screen_y = (entity.y - offset_y) * TILE_SIZE + TILE_SIZE
-        
-        # Check if the entity is within the visible Map View area
-        if (screen_x < TILE_SIZE or screen_x >= LEFT_PANEL_WIDTH * TILE_SIZE - TILE_SIZE or 
-            screen_y < TILE_SIZE or screen_y >= SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE):
-            continue
-            
-        # Only draw entities that are in the field of vision
-        if entity.entity_type == EntityType.PLAYER or game_map.visible[entity.y][entity.x]:
-            if entity.entity_type == EntityType.PLAYER:
-                tile_index = 64  # @ character
-            else:
-                tile_index = ord(entity.char)
-            
-            tile = get_tile_from_tileset(tile_index)
-            colored_tile = tile.copy()
-            colored_tile.fill(entity.color, special_flags=pygame.BLEND_RGBA_MULT)
-            screen.blit(colored_tile, (screen_x, screen_y))
 
 def draw_info_panel(player, game_world):
     # Draw info panel in the right section
@@ -403,174 +758,6 @@ def draw_arrow_path(start_x, start_y, end_x, end_y, camera_x, camera_y):
         return True
     
     return False
-
-def draw_inventory(player, selected_index, inventory_mode, selected_equipment_slot):
-    """Draw the inventory screen"""
-    # Create a semi-transparent overlay
-    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-    overlay.set_alpha(200)
-    overlay.fill(BLACK)
-    screen.blit(overlay, (0, 0))
-    
-    # Draw inventory title
-    font_title = pygame.font.SysFont('Arial', 24)
-    title_text = font_title.render("INVENTORY", True, YELLOW)
-    title_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 - title_text.get_width() // 2
-    screen.blit(title_text, (title_x, TILE_SIZE * 2))
-    
-    # Draw equipment section title
-    equip_title = font_title.render("EQUIPMENT", True, LIGHT_BLUE if inventory_mode == 'equipment' else GRAY)
-    equip_x = TILE_SIZE * 4
-    screen.blit(equip_title, (equip_x, TILE_SIZE * 4))
-    
-    # Draw inventory section title
-    inv_title = font_title.render("ITEMS", True, LIGHT_BLUE if inventory_mode == 'items' else GRAY)
-    inv_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 + TILE_SIZE * 4
-    screen.blit(inv_title, (inv_x, TILE_SIZE * 4))
-    
-    # Draw dividing line
-    mid_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2
-    pygame.draw.line(screen, WHITE, (mid_x, TILE_SIZE * 6), 
-                    (mid_x, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2), 2)
-    
-    # Font for items
-    font = pygame.font.SysFont('Arial', 16)
-    small_font = pygame.font.SysFont('Arial', 12)
-    
-    # Draw equipment slots
-    equipment_slots = [
-        (EquipmentSlot.RIGHT_HAND, "Right Hand"),
-        (EquipmentSlot.LEFT_HAND, "Left Hand"),
-        (EquipmentSlot.HEAD, "Head"),
-        (EquipmentSlot.TORSO, "Torso"),
-        (EquipmentSlot.LEGS, "Legs"),
-        (EquipmentSlot.HANDS, "Hands"),
-        (EquipmentSlot.FEET, "Feet")
-    ]
-    
-    # Track if we're showing a two-handed weapon
-    two_handed_weapon = None
-    
-    for i, (slot, name) in enumerate(equipment_slots):
-        # Draw slot name
-        y_pos = TILE_SIZE * 6 + i * TILE_SIZE * 2
-        slot_text = font.render(name + ":", True, WHITE)
-        screen.blit(slot_text, (TILE_SIZE * 2, y_pos))
-        
-        # Get equipped item for this slot
-        equipped_item = player.inventory.get_equipped_item(slot)
-        
-        # Draw highlight for selected equipment slot
-        if inventory_mode == 'equipment' and slot == selected_equipment_slot:
-            pygame.draw.rect(screen, (50, 50, 150), 
-                          (TILE_SIZE, y_pos - 5, 
-                           mid_x - TILE_SIZE * 2, 
-                           TILE_SIZE * 1.5))
-        
-        # Draw equipped item or "Empty"
-        if equipped_item:
-            # Check if it's a two-handed weapon
-            is_two_handed = (equipped_item.item.weapon_data and equipped_item.item.weapon_data.is_two_handed)
-            
-            # If this is the left hand slot and we already displayed a two-handed weapon in the right hand
-            if slot == EquipmentSlot.LEFT_HAND and two_handed_weapon:
-                info_text = font.render(f"(Same as right hand - {two_handed_weapon.name})", True, GRAY)
-                screen.blit(info_text, (TILE_SIZE * 14, y_pos))
-                continue
-                
-            # Draw item character
-            item_char = get_tile_from_tileset(ord(equipped_item.char))
-            colored_char = item_char.copy()
-            colored_char.fill(equipped_item.color, special_flags=pygame.BLEND_RGBA_MULT)
-            screen.blit(colored_char, (TILE_SIZE * 12, y_pos))
-            
-            # Add (2H) suffix for two-handed weapons
-            name_text = f"{equipped_item.name}"
-            if is_two_handed:
-                name_text += " (2H)"
-            
-            # Add [unpaid] for unpaid shop items
-            if equipped_item.item and equipped_item.item.unpaid:
-                name_text += " [unpaid]"
-                item_text = font.render(name_text, True, RED)
-            else:
-                item_text = font.render(name_text, True, YELLOW)
-            
-            if is_two_handed:
-                # Remember we displayed a two-handed weapon
-                two_handed_weapon = equipped_item
-            
-            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
-            
-            # Show price for unpaid items
-            if equipped_item.item and equipped_item.item.unpaid:
-                price_text = small_font.render(f"Price: {equipped_item.item.price} silver", True, YELLOW)
-                screen.blit(price_text, (TILE_SIZE * 14, y_pos + TILE_SIZE))
-        else:
-            item_text = font.render("Empty", True, GRAY)
-            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
-    
-    # Draw carried items (right column)
-    items_start_y = TILE_SIZE * 6
-    items_per_page = 10
-    
-    # Draw slot count at bottom right
-    slot_text = font.render(f"Slots: {len(player.inventory.items)}/{player.inventory.capacity}", True, WHITE)
-    slot_x = LEFT_PANEL_WIDTH * TILE_SIZE - slot_text.get_width() - TILE_SIZE
-    slot_y = SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2
-    screen.blit(slot_text, (slot_x, slot_y))
-    
-    for i, item in enumerate(player.inventory.items[:items_per_page]):
-        y_pos = items_start_y + i * TILE_SIZE * 2
-        
-        # Highlight selected item
-        if inventory_mode == 'items' and i == selected_index:
-            pygame.draw.rect(screen, (50, 50, 150), 
-                           (mid_x + TILE_SIZE, y_pos - 5, 
-                            LEFT_PANEL_WIDTH * TILE_SIZE // 2 - TILE_SIZE * 2, 
-                            TILE_SIZE * 1.5))
-        
-        # Draw item character and name
-        item_char = get_tile_from_tileset(ord(item.char))
-        colored_char = item_char.copy()
-        colored_char.fill(item.color, special_flags=pygame.BLEND_RGBA_MULT)
-        screen.blit(colored_char, (mid_x + TILE_SIZE * 2, y_pos))
-        
-        # Build the item name with any needed suffixes
-        name_text = f"{item.name}"
-        
-        # Add (2H) suffix for two-handed weapons
-        if item.item and item.item.weapon_data and item.item.weapon_data.is_two_handed:
-            name_text += " (2H)"
-        
-        # Add [unpaid] for unpaid shop items
-        if item.item and item.item.unpaid:
-            name_text += " [unpaid]"
-            item_text = font.render(name_text, True, RED)
-        else:
-            item_text = font.render(name_text, True, WHITE)
-        
-        screen.blit(item_text, (mid_x + TILE_SIZE * 4, y_pos))
-        
-        # Show price for unpaid items
-        if item.item and item.item.unpaid:
-            price_text = small_font.render(f"Price: {item.item.price} silver", True, YELLOW)
-            screen.blit(price_text, (mid_x + TILE_SIZE * 4, y_pos + TILE_SIZE))
-    
-    # Draw instructions
-    instructions = [
-        "←/→: Switch sides",
-        "↑/↓: Navigate",
-        "Enter: Use/Equip/Unequip",
-        "D: Drop item",
-        "B: Buy unpaid items",
-        "I: Close inventory"
-    ]
-    
-    for i, instruction in enumerate(instructions):
-        instr_text = font.render(instruction, True, LIGHT_BLUE)
-        screen.blit(instr_text, (LEFT_PANEL_WIDTH * TILE_SIZE // 4, 
-                               SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * (6-i)))
 
 def draw_text(text, x, y, color=WHITE):
     """Draw text at the specified position"""

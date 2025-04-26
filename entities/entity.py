@@ -43,6 +43,10 @@ class Entity:
                 self.x += dx
                 self.y += dy
                 
+                # Double-check we're still within bounds after all movement
+                self.x = max(0, min(game_map.width - 1, self.x))
+                self.y = max(0, min(game_map.height - 1, self.y))
+                
                 # Check for silver pickup if this is the player
                 if self.entity_type == EntityType.PLAYER:
                     for entity in list(game_map.entities):

@@ -14,7 +14,52 @@ TILE_SIZE = 16  # Size of each tile in pixels
 SCREEN_WIDTH = pygame.display.Info().current_w
 SCREEN_HEIGHT = pygame.display.Info().current_h
 
-# GUI Layout Constants
+# Modern Theme Colors
+# Primary Colors
+DEEP_CRIMSON = (120, 20, 30)
+DARK_PURPLE = (60, 30, 80)
+OBSIDIAN_BLACK = (15, 15, 20)
+BURNISHED_GOLD = (205, 170, 60)
+
+# Accent Colors
+BLOOD_RED = (180, 25, 25)
+MYSTICAL_BLUE = (40, 90, 140)
+ETHEREAL_GREEN = (30, 130, 90)
+
+# UI Colors
+UI_BACKGROUND = OBSIDIAN_BLACK
+UI_BORDER = BURNISHED_GOLD
+UI_TEXT_PRIMARY = (220, 220, 220)
+UI_TEXT_SECONDARY = (170, 170, 170)
+UI_HIGHLIGHT = BLOOD_RED
+UI_PANEL_BACKGROUND = (25, 25, 35)
+UI_BUTTON_NORMAL = (40, 40, 55)
+UI_BUTTON_HOVER = (50, 50, 70)
+UI_BUTTON_ACTIVE = (60, 60, 85)
+
+# Legacy Colors (kept for backward compatibility)
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (100, 100, 100)
+DARK_GRAY = (50, 50, 50)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
+LIGHT_BLUE = (173, 216, 230)
+
+# Responsive Layout Settings - all values are percentages of screen dimension
+PANEL_RIGHT_WIDTH_PCT = 0.20  # Right panel width (percentage of screen width)
+PANEL_BOTTOM_HEIGHT_PCT = 0.22  # Bottom panel height (percentage of screen height)
+PANEL_TOP_HEIGHT_PCT = 0.05  # Top panel height (percentage of screen height)
+PANEL_MIN_WIDTH_PX = 200  # Minimum width in pixels for panels
+PANEL_MIN_HEIGHT_PX = 120  # Minimum height in pixels for panels
+
+# Panel states
+PANEL_STATE_EXPANDED = "expanded"
+PANEL_STATE_COLLAPSED = "collapsed"
+PANEL_STATE_HIDDEN = "hidden"
+
+# Fixed layout constants (maintained for backward compatibility)
 INFO_PANEL_WIDTH = 16  # Width in tiles for the right panel
 MESSAGE_LOG_HEIGHT = 8  # Height in tiles for the message log
 LEFT_PANEL_WIDTH = (SCREEN_WIDTH // TILE_SIZE) - INFO_PANEL_WIDTH
@@ -37,16 +82,6 @@ MAX_ITEMS_PER_ROOM = 2
 # Message log settings
 MAX_MESSAGES = 50
 
-# Colors
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GRAY = (100, 100, 100)
-DARK_GRAY = (50, 50, 50)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-YELLOW = (255, 255, 0)
-LIGHT_BLUE = (173, 216, 230)
-
 # Border character indices in CP437
 BORDER_HORIZONTAL = 205  # ═
 BORDER_VERTICAL = 186    # ║
@@ -62,11 +97,15 @@ BORDER_CROSS = 206       # ╬
 
 # Set up the display
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
-pygame.display.set_caption("Roguelike Game")
+pygame.display.set_caption("Crimson Depths")
 
 # Load the CP437 tileset using an absolute path
 tileset_path = os.path.join(current_dir, 'cp437_16x16.png')
 tileset = pygame.image.load(tileset_path).convert_alpha()
+
+# UI Animation settings
+ANIMATION_DURATION = 200  # milliseconds
+ANIMATION_EASING = "ease-out"  # easing function type
 
 # Tile types
 class TileType(Enum):
@@ -106,6 +145,13 @@ class ItemType(Enum):
     MISC = 9
     RANGED_WEAPON = 10
     AMMO = 11
+
+class PanelType(Enum):
+    CHARACTER = 0
+    INVENTORY = 1
+    MAP = 2
+    MESSAGE_LOG = 3
+    ACTION_BAR = 4
 
 def get_tile_from_tileset(index):
     # Calculate position in the tileset

@@ -4,7 +4,7 @@ import random
 from config import (
     TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, LEFT_PANEL_WIDTH, MESSAGE_LOG_HEIGHT,
     INFO_PANEL_WIDTH, MAP_WIDTH, MAP_HEIGHT, BLACK, WHITE, RED, GREEN, LIGHT_BLUE, YELLOW,
-    screen, EntityType, EquipmentSlot, ItemType
+    UI_BACKGROUND, UI_TEXT_PRIMARY, screen, EntityType, EquipmentSlot, ItemType
 )
 from map.map import Map
 from map.fov import calculate_fov
@@ -16,8 +16,9 @@ from entities.inventory import Inventory
 from game.world import GameWorld
 from data.items import place_entities, create_item
 from ui.message_log import MessageLog
+from ui.theme import ThemeManager
 from ui.rendering import (
-    draw_borders, draw_map, draw_entities, draw_info_panel, 
+    draw_game_ui, draw_borders, draw_map, draw_entities, draw_info_panel, 
     draw_message_log, draw_inventory, draw_targeting_cursor, draw_arrow_path
 )
 from ui.title_screen import title_screen
@@ -149,12 +150,15 @@ def play_game(
     
     # Camera offsets - adjusted for new layout
     view_width = LEFT_PANEL_WIDTH - 2
-    view_height = (SCREEN_HEIGHT // TILE_SIZE) - MESSAGE_LOG_HEIGHT - 2
+    # Calculate view height in tiles: subtract message log rows and action bar rows (5 tiles)
+    view_height = (SCREEN_HEIGHT // TILE_SIZE) - MESSAGE_LOG_HEIGHT - 5
     camera_x = max(0, min(MAP_WIDTH - view_width, player.x - view_width // 2))
     camera_y = max(0, min(MAP_HEIGHT - view_height, player.y - view_height // 2))
     
     # Targeting variables
     targeting_x, targeting_y = player.x, player.y
+    player.targeting_x = targeting_x  # Store targeting position on player for rendering
+    player.targeting_y = targeting_y
     
     # Main game loop
     clock = pygame.time.Clock()
@@ -205,6 +209,8 @@ def play_game(
                             game_state = 'targeting'
                             # Initialize targeting at player position
                             targeting_x, targeting_y = player.x, player.y
+                            player.targeting_x = targeting_x
+                            player.targeting_y = targeting_y
                             
                             # Find visible monsters
                             visible_monsters = []
@@ -232,6 +238,8 @@ def play_game(
                                 if closest_monster:
                                     targeting_x = closest_monster.x
                                     targeting_y = closest_monster.y
+                                    player.targeting_x = targeting_x
+                                    player.targeting_y = targeting_y
                             
                             message_log.add_message("Select a target and press T to fire, or ESC to cancel.", LIGHT_BLUE)
                             message_log.add_message("Use numpad to move cursor, or arrow keys to cycle through monsters.", LIGHT_BLUE)
@@ -1136,18 +1144,12 @@ def play_game(
                             else:
                                 message_log.add_message("You don't have enough attribute points.", RED)
         
-        # Recompute FOV if needed
+        # Update game state
         if fov_recompute:
             # Adjust FOV radius based on current level
             fov_radius = 20 if game_world.current_level == 0 else 10  # Double FOV in town
             calculate_fov(game_map, player.x, player.y, fov_radius)
             fov_recompute = False
-        
-        # Update camera position - adjusted for new layout
-        view_width = LEFT_PANEL_WIDTH - 2
-        view_height = (SCREEN_HEIGHT // TILE_SIZE) - MESSAGE_LOG_HEIGHT - 2
-        camera_x = max(0, min(MAP_WIDTH - view_width, player.x - view_width // 2))
-        camera_y = max(0, min(MAP_HEIGHT - view_height, player.y - view_height // 2))
         
         # Auto-explore logic
         if auto_explore and game_state == 'playing':
@@ -1170,7 +1172,7 @@ def play_game(
                     if (entity.entity_type == EntityType.ITEM and 
                         game_map.visible[entity.y][entity.x] and
                         (entity.name == "Silver" or 
-                         (entity.item and entity.item.item_type == ItemType.CONSUMABLE and player.inventory.has_space()))):
+                            (entity.item and entity.item.item_type == ItemType.CONSUMABLE and player.inventory.has_space()))):
                         visible_items.append(entity)
                 
                 # If we found visible valuable items, path to the closest one
@@ -1285,36 +1287,25 @@ def play_game(
                             auto_explore = False
                             message_log.add_message("You died!", RED)
                             game_over_time = pygame.time.get_ticks()  # Record time when game over happens
-        
-        # Clear the screen
-        screen.fill(BLACK)
-        
-        # Draw the map and entities
-        draw_map(game_map, camera_x, camera_y)
-        draw_entities(entities, game_map, camera_x, camera_y)
-        
-        # Draw targeting cursor in targeting mode
-        if game_state == 'targeting':
-            draw_targeting_cursor(targeting_x, targeting_y, camera_x, camera_y)
+                            player_died = True
         
         # Save entities to current level before drawing
         game_world.update_entities(entities)
         
-        # Draw UI elements
-        draw_borders()
-        draw_info_panel(player, game_world)
-        draw_message_log(message_log)
+        # Adjust camera to center on player
+        camera_x = max(0, min(MAP_WIDTH - view_width, player.x - view_width // 2))
+        camera_y = max(0, min(MAP_HEIGHT - view_height, player.y - view_height // 2))
         
-        # Draw inventory screen if open
-        if game_state == 'inventory':
-            draw_inventory(player, inventory_index, inventory_mode, selected_equipment_slot)
-        elif game_state == 'character_sheet':
-            draw_character_sheet(player, selected_attribute, attributes, attribute_names)
+        # Draw everything
+        screen.fill(UI_BACKGROUND)
         
+        # Use the new UI system to draw the game UI
+        draw_game_ui(player, game_world, game_map, message_log, camera_x, camera_y, game_state, 
+                     inventory_index, inventory_mode, selected_equipment_slot)
         
         # If the game is over, draw game over message
         if game_state == 'dead':
-            font = pygame.font.SysFont('Arial', 48)
+            font = ThemeManager.FONT_HEADING
             text = font.render('GAME OVER', True, RED)
             text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
             screen.blit(text, text_rect)
@@ -1325,10 +1316,10 @@ def play_game(
                 should_return_to_title = True  # Return to title screen instead of exiting
                 player_died = True  # Set the player_died flag
         
-        # Update the screen
+        # Update the display
         pygame.display.flip()
     
-    # Return to title screen or exit game completely
+    # Return to the main menu or exit the game
     if not should_return_to_title:
         # Quit Pygame
         pygame.quit()
