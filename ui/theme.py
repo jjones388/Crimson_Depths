@@ -10,7 +10,7 @@ from config import (
     UI_HIGHLIGHT, UI_PANEL_BACKGROUND, UI_BUTTON_NORMAL, UI_BUTTON_HOVER,
     UI_BUTTON_ACTIVE, DEEP_CRIMSON, DARK_PURPLE, OBSIDIAN_BLACK, 
     BURNISHED_GOLD, BLOOD_RED, MYSTICAL_BLUE, ETHEREAL_GREEN,
-    ANIMATION_DURATION, DARK_GRAY, RED, BLACK
+    ANIMATION_DURATION, DARK_GRAY, RED, BLACK, YELLOW, GREEN
 )
 
 # Initialize pygame font system
@@ -81,7 +81,7 @@ class ThemeManager:
         pygame.draw.rect(surface, bg_color, (0, 0, width, header_height))
         
         # Add decorative elements
-        pygame.draw.line(surface, BURNISHED_GOLD, (10, header_height - 4), (width - 10, header_height - 4), 2)
+        pygame.draw.line(surface, RED, (10, header_height - 4), (width - 10, header_height - 4), 2)
         
         # Add header text
         text_surf = ThemeManager.FONT_SUBHEADING.render(text, True, text_color)
@@ -100,9 +100,11 @@ class ThemeManager:
         
         # Calculate filled width
         if max_value > 0:  # Avoid division by zero
-            filled_width = int((value / max_value) * width)
+            fill_ratio = value / max_value
+            filled_width = int(width * fill_ratio)
         else:
             filled_width = 0
+            fill_ratio = 0
             
         # Draw filled portion
         if filled_width > 0:
@@ -110,8 +112,17 @@ class ThemeManager:
             
         # Add text if requested
         if include_text:
-            text = f"{value}/{max_value}" 
-            text_surf = ThemeManager.FONT_SMALL.render(text, True, UI_TEXT_PRIMARY)
+            text = f"{value}/{max_value}"
+            
+            # Determine text color based on fill level and bar color
+            if fg_color == YELLOW or fg_color == GREEN:
+                # For yellow (XP) and green (ammo) bars, use black text when more than half full
+                text_color = (0, 0, 0) if fill_ratio > 0.5 else (255, 255, 255)
+            else:
+                # For other bars, use white text
+                text_color = (255, 255, 255)
+                
+            text_surf = ThemeManager.FONT_SMALL.render(text, True, text_color)
             text_rect = text_surf.get_rect(center=(width // 2, height // 2))
             surface.blit(text_surf, text_rect)
             

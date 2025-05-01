@@ -10,12 +10,16 @@ from config import (
     PANEL_MIN_WIDTH_PX, PANEL_MIN_HEIGHT_PX,
     PANEL_STATE_EXPANDED, PANEL_STATE_COLLAPSED, PANEL_STATE_HIDDEN,
     UI_PANEL_BACKGROUND, UI_BORDER, UI_HIGHLIGHT, UI_TEXT_PRIMARY,
-    ANIMATION_DURATION, PanelType, YELLOW, RED, DARK_GRAY, MESSAGE_LOG_HEIGHT, TILE_SIZE, INFO_PANEL_WIDTH
+    ANIMATION_DURATION, PanelType, YELLOW, RED, DARK_GRAY, MESSAGE_LOG_HEIGHT, TILE_SIZE, INFO_PANEL_WIDTH,
+    BLACK, LIGHT_BLUE, GREEN, EquipmentSlot
 )
 from ui.theme import ThemeManager
 
 # Define a fixed height for the action bar in tiles
 ACTION_BAR_HEIGHT = TILE_SIZE * 5
+
+# Define a fixed height for the status bar in tiles
+STATUS_BAR_HEIGHT = TILE_SIZE * 2
 
 class Panel:
     """Base class for UI panels with responsive positioning and state handling."""
@@ -42,11 +46,11 @@ class Panel:
         if self.panel_type == PanelType.CHARACTER:
             # Right side character panel
             self.width = INFO_PANEL_WIDTH * TILE_SIZE
-            # Height between action bar and message log
-            total_vertical = ACTION_BAR_HEIGHT + MESSAGE_LOG_HEIGHT * TILE_SIZE
+            # Height between status bar and message log
+            total_vertical = STATUS_BAR_HEIGHT + MESSAGE_LOG_HEIGHT * TILE_SIZE
             self.height = SCREEN_HEIGHT - total_vertical
             self.x = SCREEN_WIDTH - self.width
-            self.y = ACTION_BAR_HEIGHT
+            self.y = STATUS_BAR_HEIGHT
 
         elif self.panel_type == PanelType.MESSAGE_LOG:
             # Bottom panel fixed height
@@ -55,10 +59,10 @@ class Panel:
             self.x = 0
             self.y = SCREEN_HEIGHT - self.height
 
-        elif self.panel_type == PanelType.ACTION_BAR:
-            # Top action bar fixed height
+        elif self.panel_type == PanelType.STATUS_BAR:
+            # Top status bar fixed height
             self.width = SCREEN_WIDTH
-            self.height = ACTION_BAR_HEIGHT
+            self.height = STATUS_BAR_HEIGHT
             self.x = 0
             self.y = 0
 
@@ -74,24 +78,21 @@ class Panel:
         else:
             # Fallback default
             self.width = SCREEN_WIDTH - (INFO_PANEL_WIDTH * TILE_SIZE)
-            total_vertical = ACTION_BAR_HEIGHT + MESSAGE_LOG_HEIGHT * TILE_SIZE
+            total_vertical = STATUS_BAR_HEIGHT + MESSAGE_LOG_HEIGHT * TILE_SIZE
             raw_h = SCREEN_HEIGHT - total_vertical
             self.height = (raw_h // TILE_SIZE) * TILE_SIZE
             self.x = 0
-            self.y = ACTION_BAR_HEIGHT
+            self.y = STATUS_BAR_HEIGHT
     
     def _create_surfaces(self):
         """Create panel surfaces including header and content areas."""
         header_height = 40
         
-        # Create header with title and toggle button
+        # Create header with title (without toggle button)
         self.header_surface = ThemeManager.create_panel_header(self.width, self.title)
         
-        # Create toggle button in the header
-        button_size = 30
-        button_x = self.width - button_size - 5
-        button_y = (header_height - button_size) // 2
-        self.toggle_button_rect = pygame.Rect(button_x, button_y, button_size, button_size)
+        # Remove toggle button
+        self.toggle_button_rect = None
         
         # Create content area
         content_height = self.height - header_height
@@ -151,36 +152,10 @@ class Panel:
                 panel_surface, self.animation_state, progress
             )
         
-        # Draw the toggle button in the header
-        self._draw_toggle_button(panel_surface)
+        # We no longer draw a toggle button
         
         # Blit the panel to the screen
         screen.blit(panel_surface, (self.x, self.y))
-    
-    def _draw_toggle_button(self, surface):
-        """Draw the collapse/expand toggle button."""
-        button_rect = self.toggle_button_rect
-        
-        # Draw button background
-        pygame.draw.rect(surface, UI_BORDER, button_rect, border_radius=3)
-        
-        # Draw appropriate icon based on current state
-        if self.state == PANEL_STATE_EXPANDED or self.animation_state == "expanding":
-            # Draw collapse icon (down arrow)
-            points = [
-                (button_rect.centerx - 6, button_rect.centery - 3),
-                (button_rect.centerx + 6, button_rect.centery - 3),
-                (button_rect.centerx, button_rect.centery + 5)
-            ]
-        else:
-            # Draw expand icon (right arrow)
-            points = [
-                (button_rect.centerx - 5, button_rect.centery - 6),
-                (button_rect.centerx + 3, button_rect.centery),
-                (button_rect.centerx - 5, button_rect.centery + 6)
-            ]
-            
-        pygame.draw.polygon(surface, UI_TEXT_PRIMARY, points)
     
     def toggle_state(self):
         """Toggle between expanded and collapsed states with animation."""
@@ -209,20 +184,7 @@ class Panel:
     
     def handle_event(self, event):
         """Handle panel-related input events."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            # Adjust mouse position to be relative to panel
-            relative_pos = (mouse_pos[0] - self.x, mouse_pos[1] - self.y)
-            
-            # Check if toggle button was clicked
-            if (self.toggle_button_rect and 
-                0 <= relative_pos[0] < self.width and 
-                0 <= relative_pos[1] < self.collapsed_size):
-                
-                if self.toggle_button_rect.collidepoint(relative_pos):
-                    self.toggle_state()
-                    return True  # Event was handled
-        
+        # No toggle button functionality since we removed it
         return False  # Event was not handled
 
 class CharacterPanel(Panel):
@@ -246,80 +208,96 @@ class CharacterPanel(Panel):
         margin = 20
         y_pos = margin
         
-        # Dungeon level information
-        level_text = f"Dungeon: {game_world.current_level}"
-        level_surf = ThemeManager.FONT_NORMAL.render(level_text, True, UI_TEXT_PRIMARY)
-        self.content_surface.blit(level_surf, (margin, y_pos))
-        y_pos += 25
-        
-        # Character level
-        char_level_text = f"Character Level: {player.fighter.level}"
-        char_level_surf = ThemeManager.FONT_NORMAL.render(char_level_text, True, UI_TEXT_PRIMARY)
+        # Character level - displayed first
+        char_level_text = f"Level: {player.fighter.level}"
+        char_level_surf = ThemeManager.FONT_NORMAL.render(char_level_text, True, UI_HIGHLIGHT)
         self.content_surface.blit(char_level_surf, (margin, y_pos))
+        y_pos += 35
+        
+        # Primary Attributes Grid
+        attr_title = ThemeManager.FONT_NORMAL.render("ATTRIBUTES", True, UI_HIGHLIGHT)
+        self.content_surface.blit(attr_title, (margin, y_pos))
         y_pos += 25
         
-        # Silver pieces
+        # Calculate column width
+        col_width = (self.width - (margin * 2)) // 3
+        
+        # First row: STR, DEX, CON
+        row1_attrs = [("STR", player.fighter.str), 
+                     ("DEX", player.fighter.dex), 
+                     ("CON", player.fighter.con)]
+        
+        for i, (attr_name, attr_value) in enumerate(row1_attrs):
+            attr_text = f"{attr_name}: {attr_value}"
+            attr_surf = ThemeManager.FONT_NORMAL.render(attr_text, True, UI_TEXT_PRIMARY)
+            x_pos = margin + (i * col_width)
+            self.content_surface.blit(attr_surf, (x_pos, y_pos))
+        
+        y_pos += 25
+        
+        # Second row: INT, WIS, CHA
+        row2_attrs = [("INT", player.fighter.int), 
+                     ("WIS", player.fighter.wis), 
+                     ("CHA", player.fighter.cha)]
+        
+        for i, (attr_name, attr_value) in enumerate(row2_attrs):
+            attr_text = f"{attr_name}: {attr_value}"
+            attr_surf = ThemeManager.FONT_NORMAL.render(attr_text, True, UI_TEXT_PRIMARY)
+            x_pos = margin + (i * col_width)
+            self.content_surface.blit(attr_surf, (x_pos, y_pos))
+        
+        y_pos += 40
+        
+        # Combat Information Card
+        combat_title = ThemeManager.FONT_NORMAL.render("COMBAT STATS", True, UI_HIGHLIGHT)
+        self.content_surface.blit(combat_title, (margin, y_pos))
+        y_pos += 25
+        
+        # Draw a subtle border/background for the combat card
+        card_width = self.width - (margin * 2)
+        card_height = 110  # Adjust based on number of stats
+        card_rect = pygame.Rect(margin - 5, y_pos - 5, card_width, card_height)
+        pygame.draw.rect(self.content_surface, UI_BORDER, card_rect, 1, border_radius=3)
+        
+        # Combat stats
+        combat_stats = [
+            f"Attack Bonus: +{player.fighter.attack_bonus}",
+            f"Critical Hit: {10}%",  # Placeholder for crit chance
+            f"Dodge: {player.fighter.get_dodge_chance()}%",
+            f"Armor: {player.fighter.armor}",
+            f"Damage: {player.fighter.damage_dice[0]}d{player.fighter.damage_dice[1]}"
+        ]
+        
+        for stat in combat_stats:
+            stat_surf = ThemeManager.FONT_NORMAL.render(stat, True, UI_TEXT_PRIMARY)
+            self.content_surface.blit(stat_surf, (margin, y_pos))
+            y_pos += 20
+        
+        y_pos += 20
+        
+        # Equipment Information
+        equip_title = ThemeManager.FONT_NORMAL.render("EQUIPMENT", True, UI_HIGHLIGHT)
+        self.content_surface.blit(equip_title, (margin, y_pos))
+        y_pos += 25
+        
+        # Right Hand
+        right_hand = player.inventory.get_equipped_item(EquipmentSlot.RIGHT_HAND)
+        right_hand_text = f"Right Hand: {right_hand.name if right_hand else 'Empty'}"
+        right_hand_surf = ThemeManager.FONT_NORMAL.render(right_hand_text, True, UI_TEXT_PRIMARY)
+        self.content_surface.blit(right_hand_surf, (margin, y_pos))
+        y_pos += 20
+        
+        # Left Hand
+        left_hand = player.inventory.get_equipped_item(EquipmentSlot.LEFT_HAND)
+        left_hand_text = f"Left Hand: {left_hand.name if left_hand else 'Empty'}"
+        left_hand_surf = ThemeManager.FONT_NORMAL.render(left_hand_text, True, UI_TEXT_PRIMARY)
+        self.content_surface.blit(left_hand_surf, (margin, y_pos))
+        y_pos += 30
+        
+        # Silver pieces (currency) - moved to after equipment
         silver_text = f"Silver: {player.silver_pieces} sp"
-        silver_surf = ThemeManager.FONT_NORMAL.render(silver_text, True, UI_HIGHLIGHT)
+        silver_surf = ThemeManager.FONT_NORMAL.render(silver_text, True, YELLOW)
         self.content_surface.blit(silver_surf, (margin, y_pos))
-        y_pos += 35
-        
-        # XP information
-        xp_text = f"Experience: {player.fighter.xp}"
-        xp_surf = ThemeManager.FONT_NORMAL.render(xp_text, True, UI_TEXT_PRIMARY)
-        self.content_surface.blit(xp_surf, (margin, y_pos))
-        y_pos += 20
-        
-        # XP progress bar
-        next_level_xp = player.fighter.get_next_level_xp()
-        if next_level_xp:
-            bar_width = self.width - (margin * 2)
-            xp_bar = ThemeManager.create_progress_bar(
-                bar_width, 15, player.fighter.xp, next_level_xp, 
-                fg_color=YELLOW, include_text=False
-            )
-            self.content_surface.blit(xp_bar, (margin, y_pos))
-            
-            # XP remaining text
-            xp_remaining = next_level_xp - player.fighter.xp
-            xp_remaining_text = f"Next level: {xp_remaining} XP needed"
-            xp_remaining_surf = ThemeManager.FONT_SMALL.render(xp_remaining_text, True, UI_TEXT_PRIMARY)
-            self.content_surface.blit(xp_remaining_surf, (margin, y_pos + 20))
-            y_pos += 45
-        else:
-            y_pos += 25
-            
-        # Health information
-        hp_text = f"Health"
-        hp_surf = ThemeManager.FONT_NORMAL.render(hp_text, True, UI_TEXT_PRIMARY)
-        self.content_surface.blit(hp_surf, (margin, y_pos))
-        y_pos += 20
-        
-        # Health progress bar
-        bar_width = self.width - (margin * 2)
-        hp_bar = ThemeManager.create_progress_bar(
-            bar_width, 20, player.fighter.hp, player.fighter.max_hp, 
-            fg_color=RED, bg_color=DARK_GRAY
-        )
-        self.content_surface.blit(hp_bar, (margin, y_pos))
-        y_pos += 35
-        
-        # Combat statistics
-        stats_text = "COMBAT STATS"
-        stats_surf = ThemeManager.FONT_NORMAL.render(stats_text, True, UI_HIGHLIGHT)
-        self.content_surface.blit(stats_surf, (margin, y_pos))
-        y_pos += 25
-        
-        # Display armor
-        armor_text = f"Armor Class: {player.fighter.armor}"
-        armor_surf = ThemeManager.FONT_NORMAL.render(armor_text, True, UI_TEXT_PRIMARY)
-        self.content_surface.blit(armor_surf, (margin, y_pos))
-        y_pos += 20
-        
-        # Display damage
-        damage_text = f"Damage: {player.fighter.damage_dice[0]}d{player.fighter.damage_dice[1]}"
-        damage_surf = ThemeManager.FONT_NORMAL.render(damage_text, True, UI_TEXT_PRIMARY)
-        self.content_surface.blit(damage_surf, (margin, y_pos))
 
 class MessageLogPanel(Panel):
     """Panel for displaying game messages."""
@@ -379,87 +357,87 @@ class MessageLogPanel(Panel):
                     
         return False
 
-class ActionBarPanel(Panel):
-    """Panel for displaying action buttons and game controls."""
+class StatusBarPanel(Panel):
+    """Panel for displaying character status bars."""
     
     def __init__(self):
-        super().__init__(PanelType.ACTION_BAR, "")
-        self.buttons = []
-        self._create_buttons()
+        super().__init__(PanelType.STATUS_BAR, "")
+        # Override the default dimensions calculation to ensure content surface is created properly
+        self._create_surfaces()
         
-    def _create_buttons(self):
-        """Create action bar buttons."""
-        button_width = 120
-        button_height = 30
-        button_spacing = 10
+    def _create_surfaces(self):
+        """Create the content surface directly without a header"""
+        # Skip the header creation and toggle button
+        self.header_surface = None
+        self.toggle_button_rect = None
         
-        # Define buttons and their positions
-        button_definitions = [
-            {"text": "Inventory [I]", "x": 10},
-            {"text": "Character [C]", "x": 10 + button_width + button_spacing},
-            {"text": "Auto-explore [E]", "x": 10 + (button_width + button_spacing) * 2},
-            {"text": "Target [T]", "x": 10 + (button_width + button_spacing) * 3},
-            {"text": "Quick Fire [F]", "x": 10 + (button_width + button_spacing) * 4},
-            {"text": "View Map [M]", "x": self.width - button_width - 10}
-        ]
-        
-        # Create button objects
-        for btn in button_definitions:
-            y_pos = (self.height - button_height) // 2
-            self.buttons.append({
-                "rect": pygame.Rect(btn["x"], y_pos, button_width, button_height),
-                "text": btn["text"],
-                "state": "normal"
-            })
+        # Create content surface to fill the entire panel
+        self.content_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.content_surface.fill(BLACK)
     
-    def update_content(self):
-        """Update the action bar content."""
-        if not self.content_surface:
+    def update_content(self, player):
+        """Update the status bar content with player information."""
+        if not self.content_surface or not player:
             return
             
         # Clear the content area
-        self.content_surface.fill(UI_PANEL_BACKGROUND)
+        self.content_surface.fill(BLACK)
         
-        # Draw buttons
-        for button in self.buttons:
-            button_surf = ThemeManager.create_button_surface(
-                button["rect"].width, 
-                button["rect"].height,
-                button["text"],
-                button["state"]
+        # Calculate bar dimensions
+        bar_height = 20
+        bar_spacing = 10
+        total_bars = 4  # HP, MP, XP, Ammo
+        total_width = self.width - (bar_spacing * (total_bars + 1))
+        bar_width = total_width // total_bars
+        
+        # Define a darker blue color for mana
+        # RGB values for a medium/darker blue
+        DARKER_BLUE = (0, 0, 180)
+        
+        # Draw health bar
+        hp_x = bar_spacing
+        hp_bar = ThemeManager.create_progress_bar(
+            bar_width, bar_height, player.fighter.hp, player.fighter.max_hp,
+            fg_color=RED, bg_color=DARK_GRAY, include_text=True
+        )
+        self.content_surface.blit(hp_bar, (hp_x, (self.height - bar_height) // 2))
+        
+        # Draw mana bar with darker blue
+        mp_x = hp_x + bar_width + bar_spacing
+        mp_bar = ThemeManager.create_progress_bar(
+            bar_width, bar_height, player.fighter.mp, player.fighter.max_mp,
+            fg_color=DARKER_BLUE, bg_color=DARK_GRAY, include_text=True
+        )
+        self.content_surface.blit(mp_bar, (mp_x, (self.height - bar_height) // 2))
+        
+        # Draw experience bar
+        xp_x = mp_x + bar_width + bar_spacing
+        next_level_xp = player.fighter.get_next_level_xp()
+        if next_level_xp:
+            xp_bar = ThemeManager.create_progress_bar(
+                bar_width, bar_height, player.fighter.xp, next_level_xp,
+                fg_color=YELLOW, bg_color=DARK_GRAY, include_text=True
             )
-            self.content_surface.blit(button_surf, (button["rect"].x, button["rect"].y))
+            self.content_surface.blit(xp_bar, (xp_x, (self.height - bar_height) // 2))
+        
+        # Draw ammo bar if ranged weapon is equipped
+        ammo_x = xp_x + bar_width + bar_spacing
+        ranged_weapon = player.inventory.get_equipped_ranged_weapon()
+        ammo = player.inventory.get_ammo()
+        if ranged_weapon and ammo:
+            ammo_bar = ThemeManager.create_progress_bar(
+                bar_width, bar_height, ammo.item.ammo_data.current, ammo.item.ammo_data.capacity,
+                fg_color=GREEN, bg_color=DARK_GRAY, include_text=True
+            )
+            self.content_surface.blit(ammo_bar, (ammo_x, (self.height - bar_height) // 2))
+    
+    def render(self, screen):
+        """Override render to directly blit the content surface"""
+        if self.state == PANEL_STATE_HIDDEN:
+            return
             
-    def handle_event(self, event):
-        """Handle action bar events and button clicks."""
-        if event.type == pygame.MOUSEMOTION:
-            mouse_pos = pygame.mouse.get_pos()
-            relative_pos = (mouse_pos[0] - self.x, mouse_pos[1] - self.y)
-            
-            # Update button hover states
-            for button in self.buttons:
-                if button["rect"].collidepoint(relative_pos):
-                    button["state"] = "hover"
-                else:
-                    button["state"] = "normal"
-            
-            # Update the content to reflect new button states
-            self.update_content()
-            
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            relative_pos = (mouse_pos[0] - self.x, mouse_pos[1] - self.y)
-            
-            # Check for button clicks
-            for button in self.buttons:
-                if button["rect"].collidepoint(relative_pos):
-                    button["state"] = "active"
-                    self.update_content()
-                    
-                    # Return the button text to identify which button was clicked
-                    return button["text"]
-            
-        return None  # No button was clicked
+        # For the status bar, we just want to render the content
+        screen.blit(self.content_surface, (self.x, self.y))
 
 class PanelManager:
     """Manages all UI panels and their interactions."""
@@ -468,7 +446,7 @@ class PanelManager:
         # Create panels
         self.character_panel = CharacterPanel()
         self.message_log_panel = MessageLogPanel()
-        self.action_bar_panel = ActionBarPanel()
+        self.status_bar_panel = StatusBarPanel()
         
         # Map panel is special - it's the main display area defined by other panels
         self.map_panel = None  # This will be calculated based on other panels
@@ -476,7 +454,7 @@ class PanelManager:
         self.panels = [
             self.character_panel,
             self.message_log_panel, 
-            self.action_bar_panel
+            self.status_bar_panel
         ]
         
         # Calculate map panel area
@@ -484,12 +462,12 @@ class PanelManager:
     
     def _calculate_map_area(self):
         """Calculate the map display area based on other panels."""
-        # Calculate map area boundaries between action bar and message log panel
+        # Calculate map area boundaries between status bar and message log panel
         map_x = 0
-        map_y = self.action_bar_panel.height
+        map_y = self.status_bar_panel.height
         map_width = SCREEN_WIDTH - self.character_panel.width
-        # Map height spans from bottom of action bar to top of message log panel
-        map_height = SCREEN_HEIGHT - self.message_log_panel.height - self.action_bar_panel.height
+        # Map height spans from bottom of status bar to top of message log panel
+        map_height = SCREEN_HEIGHT - self.message_log_panel.height - self.status_bar_panel.height
         
         self.map_area = {
             "x": map_x,
@@ -504,13 +482,12 @@ class PanelManager:
             panel.update()
             
         # Update specific panel content if data provided
-        if player and game_world:
+        if player:
             self.character_panel.update_content(player, game_world)
+            self.status_bar_panel.update_content(player)
             
         if message_log:
             self.message_log_panel.update_content(message_log)
-            
-        self.action_bar_panel.update_content()
         
         # Recalculate map area in case panel dimensions changed
         self._calculate_map_area()

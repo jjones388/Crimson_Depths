@@ -18,6 +18,10 @@ class Fighter:
         self.con = random.randint(5, 10)
         self.cha = random.randint(5, 10)
         
+        # Calculate mana based on intelligence
+        self.max_mp = self.int * 2  # Base mana is 2x intelligence
+        self.mp = self.max_mp  # Current mana points
+        
         # Attribute points to distribute (awarded on level up)
         self.attr_points = 0
         
@@ -217,6 +221,11 @@ class Fighter:
         self.max_hp += hp_increase
         self.hp += hp_increase  # Also heal current HP
         
+        # Increase max mana based on intelligence
+        mp_increase = self.int
+        self.max_mp += mp_increase
+        self.mp = self.max_mp  # Restore mana on level up
+        
         # Update attack bonus
         self.attack_bonus = attack_bonus
         
@@ -226,6 +235,7 @@ class Fighter:
         if message_log:
             message_log.add_message(f"You advance to level {new_level}!", YELLOW)
             message_log.add_message(f"Your maximum HP increases by {hp_increase}!", YELLOW)
+            message_log.add_message(f"Your maximum MP increases by {mp_increase}!", YELLOW)
             if attr_points > 0:
                 message_log.add_message(f"You gain {attr_points} attribute points to distribute!", YELLOW)
     

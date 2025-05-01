@@ -151,7 +151,7 @@ class PanelType(Enum):
     INVENTORY = 1
     MAP = 2
     MESSAGE_LOG = 3
-    ACTION_BAR = 4
+    STATUS_BAR = 4
 
 def get_tile_from_tileset(index):
     # Calculate position in the tileset
