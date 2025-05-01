@@ -928,16 +928,31 @@ def play_game(
                         elif event.key == pygame.K_DOWN:
                             inventory_index = min(len(player.inventory.items) - 1, inventory_index + 1) if player.inventory.items else 0
                     else:  # equipment mode
+                        # Define the navigation order
+                        equipment_order = [
+                            EquipmentSlot.HEAD,
+                            EquipmentSlot.LEFT_HAND,
+                            EquipmentSlot.TORSO,
+                            EquipmentSlot.RIGHT_HAND,
+                            EquipmentSlot.LEGS,
+                            EquipmentSlot.FEET
+                        ]
+                        
+                        try:
+                            current_index = equipment_order.index(selected_equipment_slot)
+                        except ValueError:
+                            # If current slot isn't in the order (shouldn't happen, but safety check)
+                            current_index = 0
+                            selected_equipment_slot = equipment_order[0]
+                            
                         if event.key == pygame.K_UP:
-                            # Navigate equipment slots
-                            equipment_slots = list(EquipmentSlot)
-                            current_index = equipment_slots.index(selected_equipment_slot)
-                            selected_equipment_slot = equipment_slots[max(0, current_index - 1)]
+                            # Move up in the defined order
+                            new_index = (current_index - 1) % len(equipment_order)
+                            selected_equipment_slot = equipment_order[new_index]
                         elif event.key == pygame.K_DOWN:
-                            # Navigate equipment slots
-                            equipment_slots = list(EquipmentSlot)
-                            current_index = equipment_slots.index(selected_equipment_slot)
-                            selected_equipment_slot = equipment_slots[min(len(equipment_slots) - 1, current_index + 1)]
+                            # Move down in the defined order
+                            new_index = (current_index + 1) % len(equipment_order)
+                            selected_equipment_slot = equipment_order[new_index]
                     
                     # Use/equip/unequip item
                     if event.key == pygame.K_RETURN:

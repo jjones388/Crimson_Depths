@@ -318,129 +318,114 @@ def draw_inventory(player, selected_index, inventory_mode, selected_equipment_sl
     overlay.fill(BLACK)
     screen.blit(overlay, (0, 0))
     
-    # Draw inventory title
+    # Font definitions
     font_title = pygame.font.SysFont('Arial', 24)
+    font = pygame.font.SysFont('Arial', 16)
+    
+    # Draw inventory title (centered, yellow)
     title_text = font_title.render("INVENTORY", True, YELLOW)
-    title_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 - title_text.get_width() // 2
+    title_x = SCREEN_WIDTH // 2 - title_text.get_width() // 2
     screen.blit(title_text, (title_x, TILE_SIZE * 2))
     
-    # Draw equipment section title
-    equip_title = font_title.render("EQUIPMENT", True, LIGHT_BLUE if inventory_mode == 'equipment' else GRAY)
-    equip_x = TILE_SIZE * 4
+    # Calculate the center dividing line position
+    mid_x = SCREEN_WIDTH // 2
+    
+    # Draw section titles
+    equip_title = font_title.render("EQUIPMENT", True, WHITE)
+    equip_x = mid_x // 2 - equip_title.get_width() // 2
     screen.blit(equip_title, (equip_x, TILE_SIZE * 4))
     
-    # Draw inventory section title
-    inv_title = font_title.render("ITEMS", True, LIGHT_BLUE if inventory_mode == 'items' else GRAY)
-    inv_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2 + TILE_SIZE * 4
-    screen.blit(inv_title, (inv_x, TILE_SIZE * 4))
+    items_title = font_title.render("ITEMS", True, WHITE)
+    items_x = mid_x + (mid_x // 2) - items_title.get_width() // 2
+    screen.blit(items_title, (items_x, TILE_SIZE * 4))
     
-    # Draw dividing line
-    mid_x = (LEFT_PANEL_WIDTH * TILE_SIZE) // 2
+    # Draw vertical dividing line
     pygame.draw.line(screen, WHITE, (mid_x, TILE_SIZE * 6), 
                     (mid_x, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2), 2)
     
-    # Font for items
-    font = pygame.font.SysFont('Arial', 16)
-    small_font = pygame.font.SysFont('Arial', 12)
+    # Set up equipment layout variables
+    equip_area_center_x = mid_x // 2
+    equip_start_y = TILE_SIZE * 8
+    slot_width = TILE_SIZE * 8
+    slot_height = TILE_SIZE * 2
+    slot_spacing = TILE_SIZE * 4
+    
+    # Define the T-shaped equipment layout positions (center-x, y)
+    # Push hand slots even farther apart
+    hand_offset = slot_spacing * 2.5  # Increased from 1.75
+    equipment_layout = {
+        EquipmentSlot.HEAD: (equip_area_center_x, equip_start_y),
+        EquipmentSlot.TORSO: (equip_area_center_x, equip_start_y + slot_spacing),
+        EquipmentSlot.LEFT_HAND: (equip_area_center_x - hand_offset, equip_start_y + slot_spacing),
+        EquipmentSlot.RIGHT_HAND: (equip_area_center_x + hand_offset, equip_start_y + slot_spacing),
+        EquipmentSlot.LEGS: (equip_area_center_x, equip_start_y + slot_spacing * 2),
+        EquipmentSlot.FEET: (equip_area_center_x, equip_start_y + slot_spacing * 3)
+    }
+    
+    # Friendly names for equipment slots
+    slot_names = {
+        EquipmentSlot.HEAD: "Head",
+        EquipmentSlot.TORSO: "Chest",
+        EquipmentSlot.LEFT_HAND: "Left Hand",
+        EquipmentSlot.RIGHT_HAND: "Right Hand",
+        EquipmentSlot.LEGS: "Legs",
+        EquipmentSlot.FEET: "Feet"
+    }
     
     # Draw equipment slots
-    equipment_slots = [
-        (EquipmentSlot.RIGHT_HAND, "Right Hand"),
-        (EquipmentSlot.LEFT_HAND, "Left Hand"),
-        (EquipmentSlot.HEAD, "Head"),
-        (EquipmentSlot.TORSO, "Torso"),
-        (EquipmentSlot.LEGS, "Legs"),
-        (EquipmentSlot.HANDS, "Hands"),
-        (EquipmentSlot.FEET, "Feet")
-    ]
-    
-    # Track if we're showing a two-handed weapon
-    two_handed_weapon = None
-    
-    for i, (slot, name) in enumerate(equipment_slots):
+    for slot, (slot_x, slot_y) in equipment_layout.items():
+        # Calculate base position for text
+        slot_name_text_y = slot_y - slot_height // 2 + 2
+        item_text_y = slot_y + 10
+        
         # Draw slot name
-        y_pos = TILE_SIZE * 6 + i * TILE_SIZE * 2
-        slot_text = font.render(name + ":", True, WHITE)
-        screen.blit(slot_text, (TILE_SIZE * 2, y_pos))
+        slot_name_text = font.render(slot_names[slot], True, WHITE)
+        slot_name_text_x = slot_x - slot_name_text.get_width() // 2
+        screen.blit(slot_name_text, (slot_name_text_x, slot_name_text_y))
         
         # Get equipped item for this slot
         equipped_item = player.inventory.get_equipped_item(slot)
         
-        # Draw highlight for selected equipment slot
-        if inventory_mode == 'equipment' and slot == selected_equipment_slot:
-            pygame.draw.rect(screen, (50, 50, 150), 
-                          (TILE_SIZE, y_pos - 5, 
-                           mid_x - TILE_SIZE * 2, 
-                           TILE_SIZE * 1.5))
-        
-        # Draw equipped item or "Empty"
+        # Prepare equipped item text
         if equipped_item:
-            # Check if it's a two-handed weapon
-            is_two_handed = (equipped_item.item.weapon_data and equipped_item.item.weapon_data.is_two_handed)
-            
-            # If this is the left hand slot and we already displayed a two-handed weapon in the right hand
-            if slot == EquipmentSlot.LEFT_HAND and two_handed_weapon:
-                info_text = font.render(f"(Same as right hand - {two_handed_weapon.name})", True, GRAY)
-                screen.blit(info_text, (TILE_SIZE * 14, y_pos))
-                continue
-                
-            # Draw item character
-            item_char = get_tile_from_tileset(ord(equipped_item.char))
-            colored_char = item_char.copy()
-            colored_char.fill(equipped_item.color, special_flags=pygame.BLEND_RGBA_MULT)
-            screen.blit(colored_char, (TILE_SIZE * 12, y_pos))
+            item_name = equipped_item.name
             
             # Add (2H) suffix for two-handed weapons
-            name_text = f"{equipped_item.name}"
-            if is_two_handed:
-                name_text += " (2H)"
+            if equipped_item.item and equipped_item.item.weapon_data and equipped_item.item.weapon_data.is_two_handed:
+                item_name += " (2H)"
             
             # Add [unpaid] for unpaid shop items
             if equipped_item.item and equipped_item.item.unpaid:
-                name_text += " [unpaid]"
-                item_text = font.render(name_text, True, RED)
-            else:
-                item_text = font.render(name_text, True, YELLOW)
+                item_name += " [unpaid]"
             
-            if is_two_handed:
-                # Remember we displayed a two-handed weapon
-                two_handed_weapon = equipped_item
-            
-            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
-            
-            # Show price for unpaid items
-            if equipped_item.item and equipped_item.item.unpaid:
-                price_text = small_font.render(f"Price: {equipped_item.item.price} silver", True, YELLOW)
-                screen.blit(price_text, (TILE_SIZE * 14, y_pos + TILE_SIZE))
+            item_text = font.render(item_name, True, WHITE)
         else:
             item_text = font.render("Empty", True, GRAY)
-            screen.blit(item_text, (TILE_SIZE * 14, y_pos))
+        
+        # Calculate item text position
+        item_text_x = slot_x - item_text.get_width() // 2
+        
+        # Draw highlight for selected equipment slot (around item text) FIRST
+        if inventory_mode == 'equipment' and slot == selected_equipment_slot:
+            # Calculate highlight rectangle based on item_text position and size
+            highlight_rect = item_text.get_rect(
+                centerx=slot_x,
+                centery=item_text_y + item_text.get_height() // 2
+            )
+            highlight_rect.inflate_ip(10, 6) # Add padding
+            pygame.draw.rect(screen, (50, 50, 150), highlight_rect)
+        
+        # Draw the item text AFTER the highlight so it appears on top
+        screen.blit(item_text, (item_text_x, item_text_y))
     
-    # Draw carried items (right column)
-    items_start_y = TILE_SIZE * 6
-    items_per_page = 10
-    
-    # Draw slot count at bottom right
-    slot_text = font.render(f"Slots: {len(player.inventory.items)}/{player.inventory.capacity}", True, WHITE)
-    slot_x = LEFT_PANEL_WIDTH * TILE_SIZE - slot_text.get_width() - TILE_SIZE
-    slot_y = SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 2
-    screen.blit(slot_text, (slot_x, slot_y))
+    # Draw items list on the right side
+    items_start_x = mid_x + TILE_SIZE * 2
+    items_start_y = TILE_SIZE * 8
+    items_per_page = 10  # Max 10 items
     
     for i, item in enumerate(player.inventory.items[:items_per_page]):
-        y_pos = items_start_y + i * TILE_SIZE * 2
-        
-        # Highlight selected item
-        if inventory_mode == 'items' and i == selected_index:
-            pygame.draw.rect(screen, (50, 50, 150), 
-                           (mid_x + TILE_SIZE, y_pos - 5, 
-                            LEFT_PANEL_WIDTH * TILE_SIZE // 2 - TILE_SIZE * 2, 
-                            TILE_SIZE * 1.5))
-        
-        # Draw item character and name
-        item_char = get_tile_from_tileset(ord(item.char))
-        colored_char = item_char.copy()
-        colored_char.fill(item.color, special_flags=pygame.BLEND_RGBA_MULT)
-        screen.blit(colored_char, (mid_x + TILE_SIZE * 2, y_pos))
+        # Calculate base y position for this item line
+        base_y_pos = items_start_y + i * TILE_SIZE * 2
         
         # Build the item name with any needed suffixes
         name_text = f"{item.name}"
@@ -452,31 +437,58 @@ def draw_inventory(player, selected_index, inventory_mode, selected_equipment_sl
         # Add [unpaid] for unpaid shop items
         if item.item and item.item.unpaid:
             name_text += " [unpaid]"
-            item_text = font.render(name_text, True, RED)
-        else:
-            item_text = font.render(name_text, True, WHITE)
         
-        screen.blit(item_text, (mid_x + TILE_SIZE * 4, y_pos))
+        # Render the item text
+        item_text = font.render(name_text, True, WHITE)
+        item_text_y_pos = base_y_pos + 5 # Move down by 5 pixels as before
         
-        # Show price for unpaid items
-        if item.item and item.item.unpaid:
-            price_text = small_font.render(f"Price: {item.item.price} silver", True, YELLOW)
-            screen.blit(price_text, (mid_x + TILE_SIZE * 4, y_pos + TILE_SIZE))
+        # Highlight selected item - moved down by 3 more pixels (total 8)
+        if inventory_mode == 'items' and i == selected_index:
+            highlight_y = item_text_y_pos - 3 # Center vertically around text
+            highlight_height = item_text.get_height() + 6 # Add padding
+            pygame.draw.rect(screen, (50, 50, 150), 
+                          (items_start_x - TILE_SIZE, highlight_y, 
+                           mid_x - TILE_SIZE * 3, 
+                           highlight_height))
+        
+        # Draw the item text
+        screen.blit(item_text, (items_start_x, item_text_y_pos))
     
-    # Draw instructions
+    # Draw silver pieces in lower left corner
+    silver_text = font.render(f"Silver: {player.silver_pieces}", True, WHITE)
+    screen.blit(silver_text, (TILE_SIZE * 2, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 3))
+    
+    # Draw slots used in lower right corner
+    slots_text = font.render(f"Slots: {len(player.inventory.items)}/{player.inventory.capacity}", True, WHITE)
+    slots_x = SCREEN_WIDTH - TILE_SIZE * 2 - slots_text.get_width()
+    screen.blit(slots_text, (slots_x, SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * 3))
+    
+    # Draw instructions lower on the screen, in the message log area
+    instruction_y = SCREEN_HEIGHT - (MESSAGE_LOG_HEIGHT * TILE_SIZE) - TILE_SIZE # Moved up by one more tile
+    instruction_font = pygame.font.SysFont('Arial', 16)
     instructions = [
-        "←/→: Switch sides",
-        "↑/↓: Navigate",
-        "Enter: Use/Equip/Unequip",
-        "D: Drop item",
-        "B: Buy unpaid items",
+        "INVENTORY CONTROLS:",
+        "LEFT/RIGHT ARROW: Switch between Equipment and Items",
+        "UP/DOWN ARROW: Navigate items or equipment slots",
+        "ENTER: Use/Equip item or Unequip equipment",
+        "D: Drop selected item",
         "I: Close inventory"
     ]
     
+    # Draw instruction background
+    instr_bg_height = len(instructions) * TILE_SIZE * 1.5
+    instr_bg = pygame.Surface((SCREEN_WIDTH - TILE_SIZE * 4, instr_bg_height))
+    instr_bg.set_alpha(150)  # Slightly more opaque
+    instr_bg.fill(BLACK)
+    screen.blit(instr_bg, (TILE_SIZE * 2, instruction_y - TILE_SIZE))
+    
+    # Draw each instruction line
     for i, instruction in enumerate(instructions):
-        instr_text = font.render(instruction, True, LIGHT_BLUE)
-        screen.blit(instr_text, (LEFT_PANEL_WIDTH * TILE_SIZE // 4, 
-                               SCREEN_HEIGHT - MESSAGE_LOG_HEIGHT * TILE_SIZE - TILE_SIZE * (6-i)))
+        # Highlight the title in yellow
+        color = YELLOW if i == 0 else WHITE
+        instr_text = instruction_font.render(instruction, True, color)
+        instr_x = SCREEN_WIDTH // 2 - instr_text.get_width() // 2
+        screen.blit(instr_text, (instr_x, instruction_y + i * TILE_SIZE * 1.5))
 
 def draw_borders():
     """Draw borders around the three UI areas using double-line characters"""
