@@ -53,9 +53,6 @@ def draw_game_ui(player, game_world, game_map, message_log, offset_x, offset_y,
     if game_state == 'inventory':
         # Call the actual draw_inventory function with necessary arguments
         draw_inventory(player, inventory_index, inventory_mode, selected_equipment_slot)
-    elif game_state == 'character_sheet':
-        # This will be implemented later
-        pass # Replace with character sheet drawing function when ready
 
 def draw_map(game_map, offset_x, offset_y, map_area):
     """Draw the map tiles within the given map area"""

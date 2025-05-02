@@ -25,6 +25,12 @@ from ui.title_screen import title_screen
 from data.monsters import MONSTERS
 from map.town import BuildingType
 
+# Define character sheet variables at the module level
+attributes = ['str', 'int', 'wis', 'dex', 'con', 'cha']
+attribute_names = ['Strength', 'Intelligence', 'Wisdom', 'Dexterity', 'Constitution', 'Charisma']
+# Dictionary to track points being allocated to each attribute before confirmation
+points_to_allocate = {attr: 0 for attr in attributes}
+
 def main():
     # Initialize game variables
     game_world = None
@@ -140,8 +146,9 @@ def play_game(
     """Main game loop extracted to a function to allow returning to title screen"""
     # Define character sheet variables
     selected_attribute = 0
-    attributes = ['str', 'int', 'wis', 'dex', 'con', 'cha']
-    attribute_names = ['Strength', 'Intelligence', 'Wisdom', 'Dexterity', 'Constitution', 'Charisma']
+    # Reset points allocation dictionary
+    for attr in attributes:
+        points_to_allocate[attr] = 0
     
     # Auto-explore variables
     auto_explore = False
@@ -865,39 +872,58 @@ def play_game(
                             elif targeting_y >= camera_y + view_height - 2:
                                 camera_y = min(MAP_HEIGHT - view_height, targeting_y - view_height + 4)
                 
-                # Character sheet key handling
-                if event.key == pygame.K_c and game_state == 'playing':
-                    # Open character sheet to distribute attribute points
-                    if player.fighter.attr_points > 0:
-                        # Enter attribute distribution mode
+                # Unified Character Sheet Key Handling
+                if event.key == pygame.K_c:
+                    if game_state == 'playing':
+                        # Open character sheet
                         game_state = 'character_sheet'
-                        message_log.add_message(f"You have {player.fighter.attr_points} attribute points to distribute.", YELLOW)
-                    else:
-                        message_log.add_message("You don't have any attribute points to distribute.", YELLOW)
-                
-                # Handle character sheet controls
-                if game_state == 'character_sheet':
-                    if event.key == pygame.K_ESCAPE:
-                        # Exit character sheet mode
-                        game_state = 'playing'
-                    elif event.key == pygame.K_UP:
-                        # Move selection up
-                        selected_attribute = (selected_attribute - 1) % len(attributes)
-                    elif event.key == pygame.K_DOWN:
-                        # Move selection down
-                        selected_attribute = (selected_attribute + 1) % len(attributes)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        # Increase the selected attribute
+                        selected_attribute = getattr(player, 'selected_attribute', 0)
+                        player.selected_attribute = selected_attribute
+                        for attr in attributes:
+                            points_to_allocate[attr] = 0
+                        
                         if player.fighter.attr_points > 0:
-                            # Get current attribute name
-                            attr = attributes[selected_attribute]
-                            # Increase attribute
-                            if player.fighter.increase_attribute(attr):
-                                message_log.add_message(f"You increased your {attribute_names[selected_attribute]} to {getattr(player.fighter, attr)}.", GREEN)
+                            message_log.add_message(f"You have {player.fighter.attr_points} attribute points to distribute.", YELLOW)
+                        else:
+                            message_log.add_message("You can view your stats.", LIGHT_BLUE) # Simplified message
+                    elif game_state == 'character_sheet':
+                        # Close character sheet
+                        game_state = 'playing'
+                
+                # Handle controls ONLY when in character sheet state
+                if game_state == 'character_sheet':
+                    if event.key == pygame.K_UP:
+                        selected_attribute = (selected_attribute - 1) % len(attributes)
+                        player.selected_attribute = selected_attribute
+                    elif event.key == pygame.K_DOWN:
+                        selected_attribute = (selected_attribute + 1) % len(attributes)
+                        player.selected_attribute = selected_attribute
+                    elif event.key == pygame.K_LEFT:
+                        attr = attributes[selected_attribute]
+                        if points_to_allocate[attr] > 0:
+                            points_to_allocate[attr] -= 1
+                    elif event.key == pygame.K_RIGHT:
+                        attr = attributes[selected_attribute]
+                        total_allocated = sum(points_to_allocate.values())
+                        if total_allocated < player.fighter.attr_points:
+                            points_to_allocate[attr] += 1
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        if sum(points_to_allocate.values()) > 0:
+                            points_applied = 0
+                            for attr, points in points_to_allocate.items():
+                                for _ in range(points):
+                                    if player.fighter.increase_attribute(attr):
+                                        points_applied += 1
+                            
+                            for attr in attributes:
+                                points_to_allocate[attr] = 0
+                                
+                            if points_applied > 0:
+                                message_log.add_message(f"Applied {points_applied} attribute points!", GREEN)
                             else:
                                 message_log.add_message("You don't have enough attribute points.", RED)
                 
-                # Item usage (healing potion)
+                # Item usage (healing potion) - Ensure this is outside the character sheet logic
                 if event.key == pygame.K_h and game_state == 'playing':
                     # First try to find a healing potion in inventory
                     healing_potion = player.inventory.find_item_by_type(ItemType.CONSUMABLE)
@@ -1136,28 +1162,6 @@ def play_game(
             elif game_state == 'inventory':
                 if event.type == pygame.KEYDOWN:
                     pass  # No additional handling needed for 'inventory' state here
-            
-            elif game_state == 'character_sheet':
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        # Exit character sheet mode
-                        game_state = 'playing'
-                    elif event.key == pygame.K_UP:
-                        # Move selection up
-                        selected_attribute = (selected_attribute - 1) % len(attributes)
-                    elif event.key == pygame.K_DOWN:
-                        # Move selection down
-                        selected_attribute = (selected_attribute + 1) % len(attributes)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        # Increase the selected attribute
-                        if player.fighter.attr_points > 0:
-                            # Get current attribute name
-                            attr = attributes[selected_attribute]
-                            # Increase attribute
-                            if player.fighter.increase_attribute(attr):
-                                message_log.add_message(f"You increased your {attribute_names[selected_attribute]} to {getattr(player.fighter, attr)}.", GREEN)
-                            else:
-                                message_log.add_message("You don't have enough attribute points.", RED)
         
         # Update game state
         if fov_recompute:
@@ -1313,12 +1317,16 @@ def play_game(
         
         # Draw everything
         screen.fill(UI_BACKGROUND)
-        
-        # Use the new UI system to draw the game UI
-        draw_game_ui(player, game_world, game_map, message_log, camera_x, camera_y, game_state, 
-                     inventory_index, inventory_mode, selected_equipment_slot)
-        
-        # If the game is over, draw game over message
+
+        # If game state is character_sheet, draw only that
+        if game_state == 'character_sheet':
+            draw_character_sheet(player, selected_attribute, attributes, attribute_names)
+        else:
+            # Otherwise, draw the standard game UI
+            draw_game_ui(player, game_world, game_map, message_log, camera_x, camera_y, game_state, 
+                         inventory_index, inventory_mode, selected_equipment_slot)
+
+        # If the game is over, draw game over message (on top of whatever was drawn)
         if game_state == 'dead':
             font = ThemeManager.FONT_HEADING
             text = font.render('GAME OVER', True, RED)
@@ -1343,28 +1351,68 @@ def play_game(
     # Return whether the player died, so the main function can reset the player
     return player_died
 
-# Add to the drawing code
 def draw_character_sheet(player, selected_attribute, attributes, attribute_names):
     """Draw the character sheet screen for attribute distribution"""
-    # Clear the screen
-    screen.fill(BLACK)
+    # Clear the screen with a dark background
+    screen.fill((10, 10, 20))  # Slightly blue-tinted dark background
+    
+    # Draw a semi-transparent black overlay for better readability
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))  # Semi-transparent black
+    screen.blit(overlay, (0, 0))
     
     # Initialize fonts
-    large_font = pygame.font.SysFont('Arial', 24)
+    title_font = pygame.font.SysFont('Arial', 28)
+    section_font = pygame.font.SysFont('Arial', 20)
     font = pygame.font.SysFont('Arial', 16)
     small_font = pygame.font.SysFont('Arial', 12)
     
     # Draw the title
-    title_text = large_font.render("CHARACTER SHEET", True, YELLOW)
+    title_text = title_font.render("CHARACTER SHEET", True, YELLOW)
     screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 20))
     
-    # Draw available points
-    points_text = font.render(f"Available Points: {player.fighter.attr_points}", True, WHITE)
-    screen.blit(points_text, (SCREEN_WIDTH // 2 - points_text.get_width() // 2, 60))
+    # Character Identity Section (Name, Race, Class, Level)
+    identity_section = section_font.render("Character", True, LIGHT_BLUE)
+    screen.blit(identity_section, (50, 60))
     
-    # Draw attributes
-    y_pos = 100
+    # Draw horizontal line below section title
+    pygame.draw.line(screen, LIGHT_BLUE, (50, 85), (300, 85), 1)
+    
+    # Draw character identity details
+    name_text = font.render("Name: Bob", True, WHITE)
+    screen.blit(name_text, (60, 95))
+    
+    race_text = font.render("Race: Human", True, WHITE)
+    screen.blit(race_text, (60, 120))
+    
+    class_text = font.render("Class: Fighter", True, WHITE)
+    screen.blit(class_text, (60, 145))
+    
+    level_text = font.render(f"Level: {player.fighter.level}", True, WHITE)
+    screen.blit(level_text, (60, 170))
+    
+    # Draw available attribute points
+    if player.fighter.attr_points > 0:
+        remaining = player.fighter.attr_points - sum(points_to_allocate.values())
+        points_text = font.render(f"Available Points: {remaining}", True, GREEN)
+        screen.blit(points_text, (SCREEN_WIDTH - 240, 60))
+    
+    # Core Attributes Section
+    attributes_section = section_font.render("Attributes", True, LIGHT_BLUE)
+    screen.blit(attributes_section, (50, 210))
+    
+    # Draw horizontal line below section title
+    pygame.draw.line(screen, LIGHT_BLUE, (50, 235), (300, 235), 1)
+    
+    # Draw attributes in a 2-column layout
+    left_col_x = 60
+    right_col_x = SCREEN_WIDTH // 2 + 30
+    
     for i, (attr, name) in enumerate(zip(attributes, attribute_names)):
+        # Determine position (left or right column)
+        x_pos = left_col_x if i < 3 else right_col_x
+        y_pos = 245 + (i % 3) * 35
+        
         # Highlight selected attribute
         color = YELLOW if i == selected_attribute else WHITE
         
@@ -1373,28 +1421,80 @@ def draw_character_sheet(player, selected_attribute, attributes, attribute_names
         
         # Draw attribute name and value
         attr_text = font.render(f"{name}: {value}", True, color)
-        screen.blit(attr_text, (SCREEN_WIDTH // 2 - attr_text.get_width() // 2, y_pos))
+        screen.blit(attr_text, (x_pos, y_pos))
         
-        # Show effect of attribute if applicable
-        effect_text = None
-        if attr == 'str':
-            effect_text = f"Melee Damage Bonus: +{player.fighter.get_damage_bonus()}"
-        elif attr == 'dex':
-            effect_text = f"Dodge Chance: {player.fighter.get_dodge_chance()}%"
-        elif attr == 'con':
-            effect_text = f"HP Bonus: +{player.fighter.get_hp_bonus()} per level"
+        # Draw points being allocated with green plus
+        if points_to_allocate[attr] > 0:
+            plus_text = font.render(f"+{points_to_allocate[attr]}", True, GREEN)
+            screen.blit(plus_text, (x_pos + attr_text.get_width() + 10, y_pos))
+    
+    # Derived Statistics Section
+    derived_section = section_font.render("Derived Statistics", True, LIGHT_BLUE)
+    screen.blit(derived_section, (50, 370))
+    
+    # Draw horizontal line below section title
+    pygame.draw.line(screen, LIGHT_BLUE, (50, 395), (300, 395), 1)
+    
+    # Calculate and display derived statistics
+    max_hp = player.fighter.max_hp
+    current_hp = player.fighter.hp
+    hp_text = font.render(f"HP: {current_hp}/{max_hp}", True, WHITE)
+    screen.blit(hp_text, (60, 405))
+    
+    # Draw HP bar
+    hp_bar_width = 150
+    hp_ratio = current_hp / max_hp if max_hp > 0 else 0
+    pygame.draw.rect(screen, RED, (220, 408, hp_bar_width, 16))
+    pygame.draw.rect(screen, GREEN, (220, 408, int(hp_bar_width * hp_ratio), 16))
+    
+    # Experience to next level
+    next_level_xp = 0
+    for level, xp_threshold, _, _, _ in player.fighter.level_table:
+        if level > player.fighter.level:
+            next_level_xp = xp_threshold
+            break
+    
+    if next_level_xp > 0:
+        current_xp = player.fighter.xp
+        xp_needed = next_level_xp - current_xp
+        xp_text = font.render(f"XP: {current_xp} (Next: {xp_needed} more)", True, WHITE)
+        screen.blit(xp_text, (60, 435))
         
-        if effect_text:
-            bonus_text = small_font.render(effect_text, True, LIGHT_BLUE)
-            screen.blit(bonus_text, (SCREEN_WIDTH // 2 - bonus_text.get_width() // 2, y_pos + 25))
-        
-        y_pos += 50
+        # Draw XP progress bar
+        xp_ratio = current_xp / next_level_xp if next_level_xp > 0 else 0
+        pygame.draw.rect(screen, YELLOW, (220, 438, hp_bar_width, 16))
+        pygame.draw.rect(screen, LIGHT_BLUE, (220, 438, int(hp_bar_width * xp_ratio), 16))
+    
+    dodge_chance = player.fighter.get_dodge_chance()
+    dodge_text = font.render(f"Dodge Chance: {dodge_chance}%", True, WHITE)
+    screen.blit(dodge_text, (60, 465))
+    
+    # Combat Statistics Section
+    combat_section = section_font.render("Combat Statistics", True, LIGHT_BLUE)
+    screen.blit(combat_section, (50, 505))
+    
+    # Draw horizontal line below section title
+    pygame.draw.line(screen, LIGHT_BLUE, (50, 530), (300, 530), 1)
+    
+    # Calculate and display combat statistics
+    damage_bonus = player.fighter.get_damage_bonus()
+    damage_text = font.render(f"Melee Damage Bonus: +{damage_bonus}", True, WHITE)
+    screen.blit(damage_text, (60, 540))
+    
+    ranged_bonus = player.fighter.get_ranged_bonus()
+    ranged_text = font.render(f"Ranged Damage Bonus: +{ranged_bonus}", True, WHITE)
+    screen.blit(ranged_text, (60, 570))
+    
+    armor = player.fighter.armor
+    armor_text = font.render(f"Armor: {armor}", True, WHITE)
+    screen.blit(armor_text, (60, 600))
     
     # Draw instructions
     instructions = [
         "Use UP/DOWN arrows to select an attribute",
-        "Press ENTER to increase the selected attribute",
-        "Press ESC to exit character sheet"
+        "Use LEFT/RIGHT arrows to adjust points",
+        "Press ENTER to confirm attribute changes",
+        "Press C to exit character sheet"
     ]
     
     y_pos = SCREEN_HEIGHT - 100
